@@ -1,0 +1,31 @@
+# 2조: AWS (k3s). 병원 장애 대비 대기 사이트 (국내 DR 없음).
+# 평소에는 앱을 띄우지 않는다 (replicas 0, READ_ONLY_MODE=true). 이미지·설정만 미리 배포해 둔다.
+#   helm upgrade --install rsv helm/reservation-app -n hospital -f values-aws.yaml --set services.<이름>.image.tag=<커밋> ...
+# 장애 대응 절차 4단계 "앱 기동·쓰기 허용" 때만 values-dr-active.yaml 을 덧붙인다 (지금 배포된 tag 는 그대로):
+#   helm upgrade rsv helm/reservation-app -n hospital --reuse-values -f values-dr-active.yaml
+# AWS 가 운영 중인 동안의 일반 배포(tag 변경)는 --reuse-values 로 한다 (DR 값이 유지된다):
+#   helm upgrade rsv helm/reservation-app -n hospital --reuse-values --set services.auth.image.tag=<커밋>
+# 다시 대기로 돌릴 때: helm upgrade rsv helm/reservation-app -n hospital --reuse-values -f values-aws.yaml
+
+readOnlyMode: true
+siteName: aws
+
+services:
+  auth:
+    replicaCount: 0
+    image:
+      repository: REPLACE_ME_ECR/reservation-app-auth                      # 예: <계정>.dkr.ecr.<리전>.amazonaws.com/...
+  reservation:
+    replicaCount: 0
+    image:
+      repository: REPLACE_ME_ECR/reservation-app-reservation
+  stats:
+    replicaCount: 0
+    image:
+      repository: REPLACE_ME_ECR/reservation-app-stats
+  web:
+    replicaCount: 0
+    image:
+      repository: REPLACE_ME_ECR/reservation-app-web
+
+# k3s 기본 Ingress 는 traefik 이다. nginx 를 설치하지 않았다면 --set ingress.className=traefik

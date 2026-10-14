@@ -1,0 +1,106 @@
+{{- /*
+화면(web) Deployment·Service. nginx-unprivileged (root 아님, 포트 8080), 읽기 전용 파일시스템 (/tmp 만 쓰기).
+DB·JWT·진료기록 키 등 Secret 을 받지 않는다. Ingress 의 "/" 가 이 Service 로 온다.
+*/ -}}
+{{- $svc := .Values.services.web }}
+{{- if and $svc $svc.enabled }}
+{{- $ctx := dict "root" . "name" "web" }}
+{{- $api := dict }}
+{{- range $name := list "auth" "reservation" "stats" }}
+{{- /* nginx resolver 는 search 도메인을 붙이지 않으므로 전체 이름을 쓴다 */}}
+{{- $_ := set $api $name (printf "http://%s.%s.svc.%s:%v" (include "reservation-app.serviceName" (dict "root" $ "name" $name)) $.Release.Namespace $.Values.clusterDomain $.Values.service.port) }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "reservation-app.serviceName" $ctx }}
+  labels:
+    {{- include "reservation-app.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicaCount }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "reservation-app.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "reservation-app.selectorLabels" $ctx | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: web
+          image: "{{ $svc.image.repository }}:{{ required "services.web.image.tag 가 필요합니다 (--set services.web.image.tag=<커밋>)" $svc.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.containerPort }}
+          env:
+            - name: APP_VERSION
+              value: {{ $svc.image.tag | quote }}
+            # Pod 안 nginx 가 /api/v1/* 를 넘길 주소 (클러스터 안 Service 이름)
+            - name: AUTH_UPSTREAM
+              value: {{ $api.auth | quote }}
+            - name: RESERVATION_UPSTREAM
+              value: {{ $api.reservation | quote }}
+            - name: STATS_UPSTREAM
+              value: {{ $api.stats | quote }}
+          # DB 를 보지 않으므로 세 probe 모두 /healthz
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          lifecycle:
+            preStop:
+              # Service·Ingress 에서 빠질 시간을 준 뒤 종료 신호를 받는다 (nginx 는 진행 중 요청을 마치고 끝난다)
+              exec:
+                command: ["sleep", "{{ .Values.preStopSleepSeconds }}"]
+          resources:
+            {{- toYaml (default .Values.defaultResources $svc.resources) | nindent 12 }}
+          volumeMounts:
+            - name: tmp            # pid·임시 파일·시작 때 만드는 /tmp/web.conf
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "reservation-app.serviceName" $ctx }}
+  labels:
+    {{- include "reservation-app.labels" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "reservation-app.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+{{- end }}

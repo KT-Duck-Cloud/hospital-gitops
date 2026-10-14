@@ -1,0 +1,141 @@
+{{- /*
+API 서비스별 Deployment (auth, reservation, stats). 화면(web)은 web.yaml. 서비스마다 image.tag·replicaCount 가 따로라서
+한 서비스의 tag 만 바꿔 배포하면 그 서비스 Pod 만 바뀐다. Pod 템플릿에는 공통으로 자주 바뀌는 값(차트 버전 등)을 넣지 않는다.
+*/ -}}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc $svc.enabled (ne $name "web") }}
+{{- $ctx := dict "root" $ "name" $name }}
+{{- $dbSecret := required (printf "secrets.%s 가 없습니다 (services.%s.databaseSecret)" $svc.databaseSecret $name) (get $.Values.secrets $svc.databaseSecret) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "reservation-app.serviceName" $ctx }}
+  labels:
+    {{- include "reservation-app.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicaCount }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "reservation-app.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "reservation-app.selectorLabels" $ctx | nindent 8 }}
+      {{- if $.Values.metrics.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: {{ $.Values.metrics.path | quote }}
+        prometheus.io/port: {{ $.Values.service.targetPort | quote }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $svc.image.repository }}:{{ required (printf "services.%s.image.tag 가 필요합니다 (--set services.%s.image.tag=<커밋>)" $name $name) $svc.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $.Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $.Values.service.targetPort }}
+          env:
+            - name: APP_VERSION
+              value: {{ $svc.image.tag | quote }}
+            - name: READ_ONLY_MODE
+              value: {{ $.Values.readOnlyMode | quote }}
+            - name: SITE_NAME
+              value: {{ required "siteName 이 필요합니다 (values-onprem.yaml / values-aws.yaml)" $.Values.siteName | quote }}
+            - name: FORWARDED_ALLOW_IPS
+              value: {{ $.Values.forwardedAllowIps | default "127.0.0.1" | quote }}
+            - name: DB_POOL_SIZE
+              value: {{ $.Values.dbPool.size | quote }}
+            - name: DB_MAX_OVERFLOW
+              value: {{ $.Values.dbPool.maxOverflow | quote }}
+            - name: DB_POOL_TIMEOUT
+              value: {{ $.Values.dbPool.timeout | quote }}
+            - name: DB_POOL_RECYCLE
+              value: {{ $.Values.dbPool.recycle | quote }}
+            {{- with $svc.checkServices }}
+            - name: SERVICE_URLS
+              value: {{ include "reservation-app.serviceUrls" (dict "root" $ "names" .) | quote }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbSecret.name }}
+                  key: {{ $dbSecret.key }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.jwt.name }}
+                  key: {{ $.Values.secrets.jwt.key }}
+            {{- if $svc.medicalKey }}
+            - name: MEDICAL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.medicalKey.name }}
+                  key: {{ $.Values.secrets.medicalKey.key }}
+            - name: MEDICAL_KEY_VERSION
+              value: {{ $.Values.medicalKeyVersion | quote }}
+            {{- end }}
+            {{- if $.Values.secrets.dbCa.name }}
+            - name: DB_SSL_CA
+              value: /etc/db-ca/ca.pem
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: {{ $.Values.probes.startup.path }}
+              port: http
+            periodSeconds: {{ $.Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ $.Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ $.Values.probes.liveness.path }}
+              port: http
+            periodSeconds: {{ $.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ $.Values.probes.readiness.path }}
+              port: http
+            periodSeconds: {{ $.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.readiness.failureThreshold }}
+          lifecycle:
+            preStop:
+              # Service·Ingress 에서 빠질 시간을 준 뒤 SIGTERM 을 받는다 (진행 중 요청은 uvicorn 이 마친다)
+              exec:
+                command: ["sleep", "{{ $.Values.preStopSleepSeconds }}"]
+          resources:
+            {{- toYaml (default $.Values.defaultResources $svc.resources) | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $.Values.secrets.dbCa.name }}
+            - name: db-ca
+              mountPath: /etc/db-ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $.Values.secrets.dbCa.name }}
+        - name: db-ca
+          secret:
+            secretName: {{ $.Values.secrets.dbCa.name }}
+            items:
+              - key: {{ $.Values.secrets.dbCa.key }}
+                path: ca.pem
+        {{- end }}
+{{- end }}
+{{- end }}

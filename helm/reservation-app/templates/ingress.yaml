@@ -1,0 +1,55 @@
+{{- /*
+경로별로 서비스에 연결 (docs/api-spec.md 1장 표). 나머지 "/" 는 화면(web). web/nginx/web.conf.template 의 경로와 같게 유지한다.
+*/ -}}
+{{- if .Values.ingress.enabled }}
+{{- $routes := list
+  (dict "service" "auth" "paths" (list "/api/v1/auth" "/api/v1/admin"))
+  (dict "service" "reservation" "paths" (list "/api/v1/reservations" "/api/v1/queue" "/api/v1/patients" "/api/v1/departments" "/api/v1/doctors" "/api/v1/me"))
+  (dict "service" "stats" "paths" (list "/api/v1/stats" "/api/v1/system"))
+}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "reservation-app.fullname" . }}
+  labels:
+    {{- include "reservation-app.labels" (dict "root" . "name" "ingress") | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - {{- with .Values.ingress.host }}
+      host: {{ . | quote }}
+      {{- end }}
+      http:
+        paths:
+          {{- range $route := $routes }}
+          {{- $svc := get $.Values.services $route.service }}
+          {{- if and $svc $svc.enabled }}
+          {{- range $path := $route.paths }}
+          - path: {{ $path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "reservation-app.serviceName" (dict "root" $ "name" $route.service) }}
+                port:
+                  name: http
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- if and .Values.services.web .Values.services.web.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "reservation-app.serviceName" (dict "root" . "name" "web") }}
+                port:
+                  name: http
+          {{- end }}
+{{- end }}

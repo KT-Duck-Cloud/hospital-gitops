@@ -1,0 +1,28 @@
+{{- /*
+API 서비스별 Service (화면 web 은 web.yaml). NodePort 로 열어 모니터링이 /metrics 를 읽는다 (reservation 30800, auth 30801, stats 30802).
+클러스터 안(Ingress, stats 의 /readyz 확인)에서는 같은 Service 의 ClusterIP 로 붙는다.
+NodePort 는 경로를 가릴 수 없어 API 도 같은 포트로 열린다 (API 는 로그인·권한 검사를 거친다).
+*/ -}}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc $svc.enabled (ne $name "web") }}
+{{- $ctx := dict "root" $ "name" $name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "reservation-app.serviceName" $ctx }}
+  labels:
+    {{- include "reservation-app.labels" $ctx | nindent 4 }}
+spec:
+  type: {{ ternary "NodePort" "ClusterIP" $.Values.service.nodePortEnabled }}
+  selector:
+    {{- include "reservation-app.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $.Values.service.port }}
+      targetPort: http
+      {{- if $.Values.service.nodePortEnabled }}
+      nodePort: {{ required (printf "services.%s.metricsNodePort 가 필요합니다" $name) $svc.metricsNodePort }}
+      {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,16 @@
+# DR 실행 때 바꾸는 값만 둔다 (운영/대기 전환 값 분리). 다른 값은 넣지 않는다.
+# 지금 배포된 값 위에 덧붙여(-f) 적용한다. 일반 배포 설정(이미지 주소·tag·리소스 등)은 건드리지 않는다.
+#   helm upgrade rsv helm/reservation-app -n hospital --reuse-values -f values-dr-active.yaml
+# 장애 대응 절차 4단계 "앱 기동·쓰기 허용": 앱을 띄우고 쓰기를 허용한다.
+
+readOnlyMode: false
+
+services:
+  auth:
+    replicaCount: 1
+  reservation:
+    replicaCount: 1
+  stats:
+    replicaCount: 1
+  web:
+    replicaCount: 1

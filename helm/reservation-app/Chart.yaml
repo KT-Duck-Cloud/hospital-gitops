@@ -1,0 +1,7 @@
+apiVersion: v2
+name: reservation-app
+description: 병원 예약 서비스 (FastAPI) Helm 차트. 온프레미스/AWS(DR)는 values 파일로만 구분한다.
+type: application
+version: 0.1.0
+# appVersion은 쓰지 않는다. 실제 앱 버전은 image.tag (= Git 커밋)로 정한다.
+appVersion: "0.0.0"

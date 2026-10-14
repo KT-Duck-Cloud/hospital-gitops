@@ -1,0 +1,24 @@
+# 1조: 병원 온프레미스 (kubeadm). 평상시 운영 사이트.
+# 사용: helm upgrade --install rsv helm/reservation-app -n hospital -f values-onprem.yaml --set services.<이름>.image.tag=<커밋> ...
+# 팀원 VM 이 작아서 서비스마다 1개씩 띄운다.
+
+readOnlyMode: false
+siteName: hospital
+
+services:
+  auth:
+    replicaCount: 1
+    image:
+      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-auth          # 온프레미스 레지스트리 주소
+  reservation:
+    replicaCount: 1
+    image:
+      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-reservation
+  stats:
+    replicaCount: 1
+    image:
+      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-stats
+  web:
+    replicaCount: 1
+    image:
+      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-web
