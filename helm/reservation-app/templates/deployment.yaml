@@ -68,11 +68,18 @@ spec:
             - name: SERVICE_URLS
               value: {{ include "reservation-app.serviceUrls" (dict "root" $ "names" .) | quote }}
             {{- end }}
-            - name: DATABASE_URL
+            - name: DB_URL
+              value: {{ required "dbUrl 이 필요합니다 (계정 없는 주소, 예: mysql://호스트:3306/hospital)" $.Values.dbUrl | quote }}
+            - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: {{ $dbSecret.name }}
-                  key: {{ $dbSecret.key }}
+                  key: {{ $dbSecret.usernameKey }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $dbSecret.name }}
+                  key: {{ $dbSecret.passwordKey }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

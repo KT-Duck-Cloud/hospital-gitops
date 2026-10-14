@@ -14,6 +14,8 @@ x-app-env: &app-env
   SITE_NAME: local
   APP_VERSION: dev
   JWT_SECRET: ${JWT_SECRET:?.env 에 JWT_SECRET 이 없습니다. scripts/make_env.ps1 을 실행하세요}
+  # DB 주소(계정 없음). 계정은 서비스마다 DB_USERNAME·DB_PASSWORD 로 따로 넣는다 (auth·reservation=app_runtime, stats=app_readonly).
+  DB_URL: mysql://mysql:3306/hospital
   # DB_SSL_CA 를 넣지 않는다: 로컬은 MySQL 이 자동으로 만든 인증서라 TLS 암호화만 하고 CA·서버 이름 검증은 건너뛴다.
 
 services:
@@ -51,7 +53,8 @@ services:
       context: ../hospital-backend-auth
     environment:
       <<: *app-env
-      DATABASE_URL: mysql+pymysql://app_runtime:${APP_RUNTIME_PASSWORD}@mysql:3306/hospital?charset=utf8mb4
+      DB_USERNAME: app_runtime
+      DB_PASSWORD: ${APP_RUNTIME_PASSWORD}
     ports:
       - "8001:8000"
     depends_on:
@@ -63,7 +66,8 @@ services:
       context: ../hospital-backend-reservation
     environment:
       <<: *app-env
-      DATABASE_URL: mysql+pymysql://app_runtime:${APP_RUNTIME_PASSWORD}@mysql:3306/hospital?charset=utf8mb4
+      DB_USERNAME: app_runtime
+      DB_PASSWORD: ${APP_RUNTIME_PASSWORD}
       # 진료기록 키. 없으면 R11(내 진료기록)만 503 이고 나머지는 동작한다.
       MEDICAL_KEY: ${MEDICAL_KEY:-}
       MEDICAL_KEY_VERSION: ${MEDICAL_KEY_VERSION:-1}
@@ -78,7 +82,8 @@ services:
       context: ../hospital-backend-stats
     environment:
       <<: *app-env
-      DATABASE_URL: mysql+pymysql://app_readonly:${APP_READONLY_PASSWORD}@mysql:3306/hospital?charset=utf8mb4
+      DB_USERNAME: app_readonly
+      DB_PASSWORD: ${APP_READONLY_PASSWORD}
       # S1 시스템 상태에서 /readyz 를 확인할 다른 서비스 (이름=기본주소)
       SERVICE_URLS: auth=http://auth:8000,reservation=http://reservation:8000
     ports:

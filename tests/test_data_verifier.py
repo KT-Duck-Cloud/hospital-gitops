@@ -1,6 +1,6 @@
 """tools/data_verifier.py verify: 일부러 1건 지우고 1건 바꾼 DB 에서 누락 1, 불일치 1 이 나와야 한다.
 
-DB 는 임시 SQLite (reservations 표의 검증에 쓰는 칸만). 접속 주소는 환경변수 VERIFIER_DATABASE_URL 로만 넘긴다.
+DB 는 임시 SQLite (reservations 표의 검증에 쓰는 칸만). 접속 주소는 환경변수 VERIFIER_DB_URL 로만 넘긴다.
 """
 import importlib.util
 import json
@@ -42,7 +42,7 @@ def drill(tmp_path, monkeypatch):
         con.execute("INSERT INTO reservations VALUES (?,?,?,?,?, 'BOOKED')",
                     (ln["reservation_id"], ln["request_id"], 1, 2, ln["reserved_at"].replace("T", " ").rstrip("Z")))
     con.commit()
-    monkeypatch.setenv("VERIFIER_DATABASE_URL", f"sqlite:///{db}")
+    monkeypatch.setenv("VERIFIER_DB_URL", f"sqlite:///{db}")
     yield jsonl, con, tmp_path
     con.close()
 
@@ -92,6 +92,6 @@ def test_unacknowledged_but_saved_is_reported(drill):
 
 def test_verify_requires_db_url_env(drill, monkeypatch):
     jsonl, _, tmp = drill
-    monkeypatch.delenv("VERIFIER_DATABASE_URL")
+    monkeypatch.delenv("VERIFIER_DB_URL")
     with pytest.raises(SystemExit):
         dv.main(["verify", "--in", str(jsonl)])

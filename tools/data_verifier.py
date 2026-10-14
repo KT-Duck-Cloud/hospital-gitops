@@ -11,14 +11,20 @@
            VERIFIER_AUTH_URL   로그인 API 주소. 없으면 VERIFIER_BASE_URL (compose 에서 포트가 다를 때만)
            VERIFIER_PASSWORD   테스트 계정 비밀번호 (scripts/seed_users.py 의 SEED_PASSWORD)
            VERIFIER_LOGIN_IDS  쓸 계정, 쉼표로 (기본: patient01,nurse_im01,director01,tester01 — 예약 생성 권한이 있는 역할)
-  verify : VERIFIER_DATABASE_URL  mysql+pymysql://app_readonly:...@호스트:3306/hospital
-           VERIFIER_DB_SSL_CA     DB TLS CA 파일 (없으면 TLS 암호화만, 서버 검증 안 함)
+  verify : VERIFIER_DB_URL       계정 없는 DB 주소 (예: mysql://호스트:3306/hospital)
+           VERIFIER_DB_USERNAME  조회 전용 계정 (app_readonly)
+           VERIFIER_DB_PASSWORD  그 비밀번호
+           VERIFIER_DB_SSL_CA    DB TLS CA 파일 (없으면 TLS 암호화만, 서버 검증 안 함)
 
 실행 예 (PowerShell, 저장소 루트)
   $env:VERIFIER_BASE_URL = "http://localhost:8080"
   $p = Read-Host "VERIFIER_PASSWORD" -AsSecureString
   $env:VERIFIER_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($p))
   .venv\\Scripts\\python tools\\data_verifier.py record --out drill.jsonl --interval 0.5          # Ctrl+C 로 멈춤
+  $env:VERIFIER_DB_URL = "mysql://127.0.0.1:3306/hospital"
+  $env:VERIFIER_DB_USERNAME = "app_readonly"
+  $d = Read-Host "VERIFIER_DB_PASSWORD" -AsSecureString
+  $env:VERIFIER_DB_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($d))
   .venv\\Scripts\\python tools\\data_verifier.py verify --in drill.jsonl --report drill-report      # drill-report.json / .md
 
 손실 시간(RPO) 계산
@@ -275,12 +281,34 @@ def load_lines(paths: list[str], run_id: str | None) -> list[dict]:
     return lines
 
 
-def make_engine(url: str):
+def database_url(db_url: str, username: str, password: str):
+    """계정 없는 주소 + 계정 → SQLAlchemy URL (str/repr 해도 비밀번호는 *** 로 가려진다). 오류에 값을 넣지 않는다."""
+    from sqlalchemy import make_url
+    from sqlalchemy.exc import ArgumentError
+
+    try:
+        url = make_url(db_url)
+    except ArgumentError:
+        sys.exit("VERIFIER_DB_URL 형식이 잘못되었습니다. 예) mysql://호스트:3306/hospital")
+    if url.username or url.password:
+        sys.exit("VERIFIER_DB_URL 에는 계정을 넣지 않습니다. VERIFIER_DB_USERNAME·VERIFIER_DB_PASSWORD 로 넣으세요.")
+    backend = url.get_backend_name()
+    if backend == "sqlite":  # 테스트용
+        return url
+    if backend != "mysql":
+        sys.exit("VERIFIER_DB_URL 은 mysql:// 만 지원합니다.")
+    if not username or not password:
+        sys.exit("환경변수 VERIFIER_DB_USERNAME·VERIFIER_DB_PASSWORD 가 필요합니다.")
+    return url.set(drivername="mysql+pymysql", username=username, password=password,
+                   query={"charset": "utf8mb4", **url.query})
+
+
+def make_engine(url):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
     connect_args = {}
-    if url.startswith("mysql"):
+    if url.get_backend_name() == "mysql":
         ca = os.environ.get("VERIFIER_DB_SSL_CA", "").strip()
         ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
         if not ca:
@@ -426,7 +454,8 @@ def render_text(report: dict) -> str:
 
 
 def cmd_verify(args) -> int:
-    url = require_env("VERIFIER_DATABASE_URL")
+    url = database_url(require_env("VERIFIER_DB_URL"), os.environ.get("VERIFIER_DB_USERNAME", "").strip(),
+                       os.environ.get("VERIFIER_DB_PASSWORD", ""))
     lines = load_lines(args.inputs, args.run_id)
     request_ids = sorted({ln["request_id"] for ln in lines if ln.get("request_id")})
     engine = make_engine(url)

@@ -16,6 +16,17 @@ $envPath = Join-Path $root '.env'
 if (Test-Path -LiteralPath $envPath) {
     Write-Host ".env 가 이미 있어서 그대로 둡니다. 새로 만들려면 .env 를 지우고 다시 실행하세요." -ForegroundColor Yellow
     Write-Host "(주의: MySQL 데이터가 이미 있으면 비밀번호가 맞지 않게 됩니다. 그때는 docker compose down -v 로 DB 도 다시 만드세요.)"
+    # 예전 형식(DATABASE_URL 하나에 계정·비밀번호)이 남아 있으면 이름만 알린다 (값은 읽어서 출력하지 않는다)
+    $names = foreach ($line in [System.IO.File]::ReadAllLines($envPath)) {
+        if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=') { $Matches[1] }
+    }
+    if ($names -contains 'DATABASE_URL') {
+        Write-Host ".env 에 더 이상 쓰지 않는 DATABASE_URL 이 있습니다. 그 줄을 지우세요 (DB 접속은 DB_URL·DB_USERNAME·DB_PASSWORD 로 바뀌었습니다)." -ForegroundColor Yellow
+    }
+    $missing = @('APP_RUNTIME_PASSWORD', 'APP_READONLY_PASSWORD') | Where-Object { $names -notcontains $_ }
+    if ($missing) {
+        Write-Host ".env 에 없는 항목: $($missing -join ', ')" -ForegroundColor Yellow
+    }
     exit 0
 }
 if (-not (Test-Path -LiteralPath $examplePath)) {
