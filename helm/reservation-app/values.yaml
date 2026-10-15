@@ -3,7 +3,8 @@
 # 설치 예 (온프레미스):
 #   helm upgrade --install rsv helm/reservation-app -n hospital \
 #     -f helm/reservation-app/values-onprem.yaml \
-#     --set services.auth.image.tag=<커밋> --set services.reservation.image.tag=<커밋> --set services.stats.image.tag=<커밋> \n#     --set services.web.image.tag=<커밋>
+#     --set services.auth.image.tag=<커밋> --set services.reservation.image.tag=<커밋> --set services.stats.image.tag=<커밋> \
+#     --set services.web.image.tag=<커밋>
 # 서비스 하나만 바꿀 때 (나머지는 그대로):
 #   helm upgrade rsv helm/reservation-app -n hospital --reuse-values --set services.auth.image.tag=<새 커밋>
 
@@ -22,6 +23,10 @@ dbUrl: ""
 # 인그레스 컨트롤러 Pod 대역으로 좁혀 넣는다. 주의: NodePort 로 들어온 요청도 노드 주소로 바뀌어 들어오므로,
 # 노드·브리지 주소가 포함된 넓은 대역(Pod 전체 대역 등)을 넣으면 NodePort 쪽에서 IP 를 속일 수 있다.
 forwardedAllowIps: "127.0.0.1"
+
+# HOSPITAL_PHONE: 병원 대표 번호 (연락처 화면). 공개 번호라 Secret 이 아니다. 지금 값은 가짜 번호이고 운영 값은 배포 담당이 바꾼다
+# (예: --set hospitalPhone=02-1234-5678). 비우면 연락처 화면에 "등록된 번호가 없습니다". 예약 서비스(services.reservation.hospitalPhone)만 받는다.
+hospitalPhone: "02-0000-0000"
 
 # ---- 서비스별 설정 ----
 # image.tag 는 비워 둔다 (배포할 때 --set 으로 Git 커밋 값을 넣는다. APP_VERSION 에도 쓰인다).
@@ -46,6 +51,7 @@ services:
     databaseSecret: runtimeDatabase
     metricsNodePort: 30800
     medicalKey: true       # 진료기록 복호화 키를 받는 서비스는 예약 서비스뿐이다
+    hospitalPhone: true    # HOSPITAL_PHONE(병원 대표 번호)을 받는 서비스는 예약 서비스뿐이다 (연락처 R19)
     resources: {}
   stats:
     enabled: true

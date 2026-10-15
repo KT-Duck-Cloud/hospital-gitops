@@ -28,8 +28,8 @@ erDiagram
     patients ||--o| users : "login (환자)"
     patients ||--o{ medical_records : has
     patients ||--o{ receipts : has
-    reservations ||--o| medical_records : results_in
-    reservations ||--o| receipts : billed_by
+    reservations ||--o| medical_records : "results_in (UK reservation_id, FK reservation_id+patient_id)"
+    reservations ||--o| receipts : "billed_by (UK reservation_id, FK reservation_id+patient_id)"
     users ||--o{ audit_logs : does
     users ||--o{ sessions : has
     users ||--o| doctors : "login (의사)"
@@ -38,6 +38,7 @@ erDiagram
         int id PK
         varchar code UK
         varchar name
+        varchar phone "부서 대표 번호"
     }
     doctors {
         int id PK
@@ -52,6 +53,7 @@ erDiagram
         varchar login_id UK
         varchar password_hash
         varchar name
+        varchar work_phone "직원 업무용 연락처 (환자는 NULL)"
         enum role
         int department_id FK "직원만"
         bigint patient_id FK "환자만"
@@ -84,10 +86,11 @@ erDiagram
         int department_id FK
         int doctor_id FK
         int queue_no
+        date queue_date "KST. UK(department_id, queue_date, queue_no)"
         datetime reserved_at
         enum visit_type
         enum status
-        enum checkin_status
+        enum checkin_status "NOT_CHECKED_IN, CHECKED_IN, IN_TREATMENT, COMPLETED"
         datetime checked_in_at
         varchar memo
         bigint created_by FK
@@ -164,6 +167,7 @@ READ_ONLY_MODE(DR 대기)일 때는 세션을 새로 만들 수 없다. DR 전�
 | id | INT PK | |
 | code | VARCHAR(20) UNIQUE | 예: `IM`(내과), `OS`(정형외과), `ADM`(원무과) |
 | name | VARCHAR(50) | |
+| phone | VARCHAR(20) NULL | 부서 대표 번호. 응답에서 공개 범위 적용 (아래 "전화번호 공개 범위") |
 
 ### doctors (의사) — 주인: 예약
 | 칸 | 타입 | 설명 |
@@ -182,7 +186,7 @@ READ_ONLY_MODE(DR 대기)일 때는 세션을 새로 만들 수 없다. DR 전�
 | chart_no | VARCHAR(20) UNIQUE | 차트 번호 |
 | name | VARCHAR(50) | |
 | birth_date | DATE | |
-| phone | VARCHAR(20) | 개인정보 (보안 담당과 마스킹·암호화 협의) |
+| phone | VARCHAR(20) NULL | 개인정보. 응답에서 공개 범위 적용 (아래 "전화번호 공개 범위"). 암호화 저장은 보안 담당과 협의 중 |
 
 ### reservations (예약) — 주인: 예약  ★DR 검증 대상
 | 칸 | 타입 | 설명 |
@@ -193,10 +197,11 @@ READ_ONLY_MODE(DR 대기)일 때는 세션을 새로 만들 수 없다. DR 전�
 | department_id | INT FK | |
 | doctor_id | INT NULL FK | |
 | queue_no | INT NULL | 접수 시 부서별·날짜별 대기번호 (참고: 다운님 예시) |
+| queue_date | DATE NULL | 대기번호를 매긴 날짜 (KST). 접수 때 저장. 접수 전에는 NULL |
 | reserved_at | DATETIME(6) | 진료 예약 시각 (UTC) |
 | visit_type | ENUM | `FIRST`(초진), `RETURN`(재진) |
 | status | ENUM | `BOOKED`, `CANCELED` (취소해도 행은 남김) |
-| checkin_status | ENUM | `NOT_CHECKED_IN`, `CHECKED_IN` |
+| checkin_status | ENUM | `NOT_CHECKED_IN`(접수 전), `CHECKED_IN`(진료대기), `IN_TREATMENT`(진료중), `COMPLETED`(진료완료). 앞으로만 간다 (건너뛰기·되돌리기는 앱이 409) |
 | checked_in_at | DATETIME(6) NULL | |
 | memo | VARCHAR(500) NULL | |
 | created_by | BIGINT NULL FK(users) | 예약을 만든 계정 |
@@ -204,12 +209,18 @@ READ_ONLY_MODE(DR 대기)일 때는 세션을 새로 만들 수 없다. DR 전�
 
 인덱스: `(department_id, reserved_at)`, `(patient_id, reserved_at)`, `(doctor_id, reserved_at)`.
 
+UNIQUE:
+- `uq_reservations_queue (department_id, queue_date, queue_no)` — 같은 진료과·같은 날 대기번호 중복 방지. `queue_date`·`queue_no` 가 NULL 인 접수 전 예약은 몇 건이든 걸리지 않는다.
+- `uq_reservations_id_patient (id, patient_id)` — 진료기록·영수증의 복합 외래키 대상 (예약과 환자가 함께 일치해야 저장).
+
+진료 진행: `NOT_CHECKED_IN → CHECKED_IN → IN_TREATMENT → COMPLETED`. 진료중·진료완료 예약은 취소할 수 없다. 진료 시작·완료는 그 예약의 담당 의사(`doctors.user_id` = 로그인 계정)만 하고 감사 로그 `TREATMENT_START`·`TREATMENT_COMPLETE` 를 남긴다.
+
 ### medical_records (진료기록) — 주인: 예약
 | 칸 | 타입 | 설명 |
 |---|---|---|
 | id | BIGINT PK | |
 | patient_id | BIGINT FK | |
-| reservation_id | BIGINT NULL FK | |
+| reservation_id | BIGINT NULL UNIQUE | 예약 1건에 기록 최대 1건. `(reservation_id, patient_id)` → `reservations (id, patient_id)` 복합 FK 로 예약의 환자와 같아야 한다 |
 | doctor_id | INT FK | |
 | diagnosis_enc | BLOB | AES-256-GCM 암호문 + 인증 태그 |
 | note_enc | BLOB | AES-256-GCM 암호문 + 인증 태그 |
@@ -224,12 +235,31 @@ READ_ONLY_MODE(DR 대기)일 때는 세션을 새로 만들 수 없다. DR 전�
 |---|---|---|
 | id | BIGINT PK | |
 | patient_id | BIGINT FK | |
-| reservation_id | BIGINT NULL FK | |
+| reservation_id | BIGINT NULL UNIQUE | 예약 1건에 영수증 최대 1건. `(reservation_id, patient_id)` → `reservations (id, patient_id)` 복합 FK 로 예약의 환자와 같아야 한다 |
 | amount | INT | 원 단위 |
 | pay_status | ENUM | `PAID`, `UNPAID`, `REFUNDED` |
 | paid_at | DATETIME(6) NULL | |
 
-진료기록·영수증은 처음에는 **샘플 데이터 조회만** 한다 (생성 API 없음).
+진료기록·영수증은 처음에는 **조회만** 한다 (생성 API 없음. 진료(EMR)·수납 화면은 "준비 중").
+`reservation_id` 가 NULL 이면 복합 외래키는 검사하지 않는다 (예약 없는 기록·영수증은 `patient_id` 만 맞으면 됨).
+
+이미 만든 DB 는 `db/migrate_002.sql` 로 옮긴다 (칸·UNIQUE·복합 외래키 추가, `departments.phone`·`users.work_phone` 추가).
+다시 실행해도 된다: 이미 있는 칸·키·외래키는 건너뛴다.
+
+### 전화번호 공개 범위 (보안 담당 확정)
+저장된 번호는 그대로 두고, **서버 응답을 만들 때** 역할에 따라 전체 번호 또는 가린 번호(`010-****-1234`)를 내보낸다. 규칙은 `shared/phone.py` 한 곳이다.
+
+| 역할 | 환자 번호 | 부서 대표 번호 | 직원 업무용 연락처 |
+|---|---|---|---|
+| PATIENT | 본인 것만 전체 | 전체 | (조회 API 없음) |
+| MANAGER (원무과장) | 모든 환자 전체 | 가림 | 모든 직원 전체 |
+| NURSE | 자기 부서에 예약(취소 아님)이 있는 환자만 전체, 나머지 가림 | 원무과(`ADM`)만 전체, 나머지 가림 | 자기 부서 직원만 전체 (다른 부서 직원은 목록에 나오지 않음) |
+| DOCTOR | 가림 | 가림 | 자기 부서 부서장만 전체 |
+| DEPT_HEAD | 가림 | 가림 | 자기 부서 직원 전체 |
+| DIRECTOR | 가림 | 가림 | 자기 부서 직원 + 모든 부서 부서장 전체 |
+| ADMIN, DEVELOPER, TESTER | 전부 가림 | 전부 가림 | (목록 없음) |
+
+- 감사 로그(`audit_logs`)에는 번호를 넣지 않는다 (`target_id` 는 환자 id). 앱 로그는 경로만 남기고 요청·응답 본문을 남기지 않는다.
 
 ### audit_logs (감사 로그) — 주인: 인증 (모든 서비스 INSERT)
 | 칸 | 타입 | 설명 |

@@ -79,6 +79,33 @@ def test_helm_forwarded_allow_ips_default_and_override():
     assert _forwarded_values(_helm("--set=forwardedAllowIps=")) == ["127.0.0.1"] * 3  # 비우면 기본값
 
 
+def _hospital_phone_by_deployment(rendered: str) -> dict[str, str | None]:
+    """렌더된 Deployment 마다 HOSPITAL_PHONE env 값 (없으면 None) → {Deployment 이름: 값}."""
+    out = {}
+    for doc in rendered.split("\n---\n"):
+        m = re.search(r"kind: Deployment\nmetadata:\n\s+name: (\S+)", doc)
+        if not m:
+            continue
+        v = re.search(r"- name: HOSPITAL_PHONE\n\s+value: \"([^\"]*)\"", doc)
+        out[m.group(1)] = v.group(1) if v else None
+    return out
+
+
+@pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
+def test_helm_hospital_phone_env_only_in_reservation():
+    """values.yaml 의 hospitalPhone(가짜 번호)이 예약 서비스 Deployment 의 HOSPITAL_PHONE 로만 들어간다."""
+    got = _hospital_phone_by_deployment(_helm())
+    assert len(got) == 4  # API 3개 + web
+    with_phone = {name: v for name, v in got.items() if v is not None}
+    assert len(with_phone) == 1
+    (name, value), = with_phone.items()
+    assert "reservation" in name and "auth" not in name and "stats" not in name
+    assert value == "02-0000-0000"
+    # 배포 담당이 --set 으로 운영 값을 넣을 수 있다
+    assert list(v for v in _hospital_phone_by_deployment(_helm("--set=hospitalPhone=02-1234-5678")).values()
+                if v) == ["02-1234-5678"]
+
+
 GRACEFUL_SHUTDOWN_SECONDS = 20  # 서비스 Dockerfile 의 --timeout-graceful-shutdown
 
 
@@ -96,3 +123,102 @@ def test_helm_termination_grace_covers_graceful_shutdown(values):
         assert pre_stop + GRACEFUL_SHUTDOWN_SECONDS < grace
     for name in ("DB_POOL_SIZE", "DB_MAX_OVERFLOW", "DB_POOL_TIMEOUT", "DB_POOL_RECYCLE"):
         assert len(re.findall(rf"- name: {name}\n", out)) == 3  # API 서비스 3개에만 (web 은 DB 를 쓰지 않는다)
+
+
+# ---- Ingress 경로와 web nginx 경로가 같은 서비스로 나뉘는지 ----
+def _nginx_routes() -> dict[str, str]:
+    """web.conf.template 의 `location ~ ^/api/v1/(a|b)` 블록 → {경로: 서비스}."""
+    text = (ROOT / "web" / "nginx" / "web.conf.template").read_text(encoding="utf-8")
+    routes = {}
+    for names, upstream in re.findall(r"location ~ \^/api/v1/\(([^)]*)\)\(/\|\$\) \{\s*proxy_pass \$(\w+)_upstream;", text):
+        for name in names.split("|"):
+            routes[f"/api/v1/{name}"] = upstream
+    return routes
+
+
+def _ingress_routes(*args: str) -> tuple[dict[str, str], dict]:
+    docs = _helm(*args).split("\n---")
+    ingress = next(d for d in docs if "kind: Ingress" in d)
+    spec = ingress[ingress.index("spec:"):]
+    routes = {}
+    for path, service in re.findall(r"- path: (\S+)\n\s+pathType: Prefix\n\s+backend:\n\s+service:\n\s+name: (\S+)", spec):
+        routes[path] = service
+    return routes, {"class": re.search(r"ingressClassName: (\S+)", spec).group(1)}
+
+
+@pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
+def test_ingress_routes_match_web_nginx():
+    nginx = _nginx_routes()
+    assert set(nginx.values()) == {"auth", "reservation", "stats"}
+    ingress, _ = _ingress_routes()
+    web = ingress.pop("/")
+    assert web.endswith("-web")  # "/" 는 화면
+    assert set(ingress) == set(nginx)  # 경로가 하나도 더하거나 빠지지 않는다
+    for path, upstream in nginx.items():
+        assert ingress[path].endswith(f"-{upstream}"), path
+
+
+@pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
+def test_ingress_class_name_comes_from_values():
+    assert _ingress_routes("--set=ingress.className=traefik")[1]["class"] == "traefik"
+    assert _ingress_routes("--set=ingress.className=nginx")[1]["class"] == "nginx"
+
+
+@pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
+def test_metrics_node_ports():
+    out = _helm()
+    for service, port in {"reservation": 30800, "auth": 30801, "stats": 30802}.items():
+        doc = next(d for d in out.split("\n---") if "kind: Service" in d and f"name: rsv-reservation-app-{service}\n" in d
+                   or "kind: Service" in d and re.search(rf"name: \S*-{service}\n", d))
+        assert f"nodePort: {port}" in doc, service
+
+
+# ---- API 코드의 모든 경로가 web nginx 와 Helm ingress 에 등록돼 있는지 (새 경로를 빼먹으면 실패) ----
+def _api_routes() -> dict[str, set[str]]:
+    """services/<서비스>/app/*.py 의 `@router.get("/경로")` 를 읽어 {서비스: {첫 경로 조각}} (예: reservation → {"reservations", ...}).
+
+    /api/v1 밖(/healthz, /metrics, 화면 "/")은 대상이 아니다. 라우터 prefix 는 `x = APIRouter(prefix="/api/v1/...")` 에서 읽는다.
+    """
+    services_dir = ROOT / "services"
+    if not services_dir.is_dir():
+        pytest.skip("services/ 폴더가 없음 (reservation-app 저장소에서만 확인한다)")
+    found: dict[str, set[str]] = {}
+    for service in SERVICES:
+        for source in sorted((services_dir / service / "app").glob("*.py")):
+            text = source.read_text(encoding="utf-8")
+            prefixes = dict(re.findall(r'^(\w+)\s*=\s*APIRouter\(\s*prefix="([^"]*)"', text, re.M))
+            for router, _method, path in re.findall(
+                    r'^@(\w+)\.(get|post|put|patch|delete)\(\s*"([^"]*)"', text, re.M):
+                if router not in prefixes:
+                    continue
+                full = prefixes[router].rstrip("/") + path
+                if full.startswith("/api/v1/"):
+                    found.setdefault(service, set()).add(full.split("/")[3])
+    return found
+
+
+def test_found_api_routes_sanity():
+    routes = _api_routes()
+    assert set(routes) == set(SERVICES)
+    assert {"contacts", "staff", "reservations"} <= routes["reservation"]  # 읽는 방법이 깨지면 여기서 먼저 알린다
+    assert {"auth", "admin"} <= routes["auth"] and {"stats", "system"} <= routes["stats"]
+
+
+def test_every_api_path_is_in_web_nginx():
+    nginx = _nginx_routes()
+    missing = [f"{service}: /api/v1/{name}" for service, names in _api_routes().items() for name in sorted(names)
+               if nginx.get(f"/api/v1/{name}") != service]
+    assert not missing, f"web/nginx/web.conf.template 에 없거나 다른 서비스로 가는 경로: {missing}"
+
+
+def test_every_api_path_is_in_helm_ingress():
+    """helm 이 없어도 돌도록 ingress.yaml 의 경로 목록(서비스별 list)을 글자로 읽는다."""
+    text = (CHART / "templates" / "ingress.yaml").read_text(encoding="utf-8")
+    ingress: dict[str, str] = {}
+    for service, paths in re.findall(r'\(dict "service" "(\w+)" "paths" \(list ([^)]*)\)\)', text):
+        for path in re.findall(r'"(/api/v1/[^"]+)"', paths):
+            ingress[path] = service
+    assert ingress, "ingress.yaml 에서 경로를 읽지 못함"
+    missing = [f"{service}: /api/v1/{name}" for service, names in _api_routes().items() for name in sorted(names)
+               if ingress.get(f"/api/v1/{name}") != service]
+    assert not missing, f"helm/reservation-app/templates/ingress.yaml 에 없거나 다른 서비스로 가는 경로: {missing}"

@@ -94,6 +94,10 @@ spec:
             - name: MEDICAL_KEY_VERSION
               value: {{ $.Values.medicalKeyVersion | quote }}
             {{- end }}
+            {{- if $svc.hospitalPhone }}
+            - name: HOSPITAL_PHONE
+              value: {{ $.Values.hospitalPhone | quote }}
+            {{- end }}
             {{- if $.Values.secrets.dbCa.name }}
             - name: DB_SSL_CA
               value: /etc/db-ca/ca.pem
