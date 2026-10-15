@@ -6,6 +6,9 @@ readOnlyMode: false
 siteName: hospital
 dbUrl: mysql://REPLACE_ME_ONPREM_DB_HOST:3306/hospital   # 계정 없는 DB 주소. 계정은 Secret (values.yaml secrets)
 
+ingress:
+  className: traefik   # 1조: MetalLB + Traefik
+
 services:
   auth:
     replicaCount: 1

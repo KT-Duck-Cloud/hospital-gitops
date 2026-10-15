@@ -11,6 +11,9 @@ readOnlyMode: true
 siteName: aws
 dbUrl: mysql://REPLACE_ME_AWS_DB_HOST:3306/hospital   # 계정 없는 DB 주소. 계정은 Secret (values.yaml secrets)
 
+ingress:
+  className: traefik   # k3s 기본 Ingress 컨트롤러
+
 services:
   auth:
     replicaCount: 0
@@ -28,5 +31,3 @@ services:
     replicaCount: 0
     image:
       repository: REPLACE_ME_ECR/reservation-app-web
-
-# k3s 기본 Ingress 는 traefik 이다. nginx 를 설치하지 않았다면 --set ingress.className=traefik

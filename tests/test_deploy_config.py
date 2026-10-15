@@ -165,6 +165,22 @@ def test_ingress_class_name_comes_from_values():
 
 
 @pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
+@pytest.mark.parametrize("values", ["values-onprem.yaml", "values-aws.yaml"])
+def test_ingress_class_is_traefik_in_site_values(values):
+    """1조(MetalLB+Traefik), 2조(k3s 기본 Traefik) 모두 traefik. values.yaml 기본값(nginx)은 그대로 둔다."""
+    tags = [f"--set=services.{s}.image.tag=t" for s in [*SERVICES, "web"]]
+    out = subprocess.run(["helm", "template", "rsv", str(CHART), "-f", str(CHART / values), *tags],
+                         capture_output=True, text=True, encoding="utf-8", check=True).stdout
+    ingress = next(d for d in out.split("\n---") if "kind: Ingress" in d)
+    assert re.search(r"ingressClassName: (\S+)", ingress).group(1) == "traefik"
+
+
+def test_default_values_ingress_class_unchanged():
+    text = (CHART / "values.yaml").read_text(encoding="utf-8")
+    assert re.search(r"^ingress:\n(?:.*\n)*?\s+className: nginx\b", text, re.M)
+
+
+@pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
 def test_metrics_node_ports():
     out = _helm()
     for service, port in {"reservation": 30800, "auth": 30801, "stats": 30802}.items():
