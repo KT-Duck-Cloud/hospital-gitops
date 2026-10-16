@@ -33,3 +33,8 @@ services:
     image:
       repository: 100.64.0.41:8086/duckcloud/reservation-app-web
       tag: "latest"
+
+dbPromote:
+  enabled: true
+  image: mysql:8.4
+

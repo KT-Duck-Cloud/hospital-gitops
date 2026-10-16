@@ -1,0 +1,52 @@
+{{- if .Values.dbPromote.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-failover-promote
+  labels:
+    app.kubernetes.io/name: db-failover-promote
+    app.kubernetes.io/part-of: reservation-app
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-failover-promote
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: db-promoter
+          image: {{ .Values.dbPromote.image | default "mysql:8.4" }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - "sh"
+            - "-c"
+            - |
+              mysql -h db-service -u root -p"$DB_ROOT_PASSWORD" -e "STOP REPLICA;" 2>/dev/null || true
+              mysql -h db-service -u root -p"$DB_ROOT_PASSWORD" <<EOF
+              SET GLOBAL read_only = OFF;
+              SET GLOBAL super_read_only = OFF;
+              EOF
+              READ_ONLY_STATUS=$(mysql -h db-service -u root -p"$DB_ROOT_PASSWORD" -se "SELECT @@read_only;")
+              if [ "$READ_ONLY_STATUS" = "0" ]; then
+                echo "DB promote success: read_only=0"
+                exit 0
+              else
+                echo "DB promote failed: read_only=$READ_ONLY_STATUS"
+                exit 1
+              fi
+          env:
+            - name: DB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: reservation-app-db-runtime
+                  key: DB_PASSWORD
+      volumes: []
+{{- end }}
