@@ -1,0 +1,137 @@
+# ==============================================================================
+# Traefik v3 Ingress Controller for On-Premise Cluster
+# 1조(홍석, 혜미) 온프레미스 K8s 클러스터 공통 인그레스 컨트롤러
+#
+# 포트 매핑:
+#   - HTTP 웹 트래픽    : NodePort 30080 (내부 80)
+#   - Traefik 대시보드 : NodePort 30088 (내부 8080)
+#
+# 적용 방법:
+#   kubectl apply -f infra/traefik/traefik.yaml
+# ==============================================================================
+
+# 1. ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik-ingress-controller
+  namespace: kube-system
+
+---
+# 2. ClusterRole (K8s API 조회 권한)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-ingress-controller
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+
+---
+# 3. ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik-ingress-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-ingress-controller
+subjects:
+  - kind: ServiceAccount
+    name: traefik-ingress-controller
+    namespace: kube-system
+
+---
+# 4. Traefik Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: kube-system
+  labels:
+    app: traefik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik-ingress-controller
+      containers:
+        - name: traefik
+          image: traefik:v3.1
+          args:
+            - --api.insecure=true
+            - --api.dashboard=true
+            - --providers.kubernetesingress=true
+            - --entryPoints.web.address=:80
+            - --entryPoints.traefik.address=:8080
+            - --accesslog=true
+          ports:
+            - name: web
+              containerPort: 80
+            - name: admin
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8080
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8080
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+---
+# 5. Traefik NodePort Service (외부 인입 30080)
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  type: NodePort
+  selector:
+    app: traefik
+  ports:
+    - name: web
+      port: 80
+      targetPort: web
+      nodePort: 30080
+    - name: admin
+      port: 8080
+      targetPort: admin
+      nodePort: 30088
