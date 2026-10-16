@@ -12,9 +12,6 @@ ingress:
 image:
   pullPolicy: IfNotPresent
 
-ingress:
-  className: traefik   # 1조: MetalLB + Traefik
-
 services:
   auth:
     replicaCount: 1
