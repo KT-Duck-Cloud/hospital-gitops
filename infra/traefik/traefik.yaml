@@ -30,6 +30,15 @@ rules:
       - services
       - endpoints
       - secrets
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
     verbs:
       - get
       - list
@@ -91,6 +100,7 @@ spec:
           args:
             - --api.insecure=true
             - --api.dashboard=true
+            - --ping=true
             - --providers.kubernetesingress=true
             - --entryPoints.web.address=:80
             - --entryPoints.traefik.address=:8080
