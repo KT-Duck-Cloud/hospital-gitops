@@ -317,8 +317,9 @@
 | 이름 | 예 | 설명 |
 |---|---|---|
 | `DB_URL` | `mysql://호스트:3306/hospital` | 계정 없는 DB 주소 (`user:password@` 를 넣으면 시작하지 않음). 드라이버(`mysql+pymysql`)·`charset=utf8mb4` 는 앱이 붙인다. Helm `dbUrl` (values) |
-| `DB_USERNAME` | Secret | DB 계정. auth·reservation은 `app_runtime`, stats는 `app_readonly`. Helm `secrets.<runtimeDatabase/readonlyDatabase>` |
-| `DB_PASSWORD` | Secret | 위 계정의 비밀번호. 로그·오류 메시지·응답(S1 등)에 나오지 않는다 |
+| `DB_USERNAME` | `app_runtime` / `app_readonly` | DB 계정 이름 (비밀 아님). auth·reservation은 `app_runtime`, stats는 `app_readonly`. Helm `services.<이름>.dbUsername` (values) |
+| `DB_PASSWORD` | Secret | 위 계정의 비밀번호. 로그·오류 메시지·응답(S1 등)에 나오지 않는다. Helm `secrets.<runtimeDatabase/readonlyDatabase>` |
+| `LOGIN_RATE_LIMIT_PER_MINUTE` | `20` (기본) | 로그인 요청 제한(분당). auth 서비스만 읽는다. Helm `loginRateLimitPerMinute` |
 | `DB_SSL_CA` | 파일 경로 | DB TLS CA 인증서 (서버 이름 검증) |
 | `MEDICAL_KEY` | Secret (예약 서비스만) | 진료기록 AES-256 키, base64 32바이트. 없으면 R11 만 503, 나머지는 동작. KMS 로 옮길 때는 `shared/crypto.py` 만 바꾼다 (`KMS_KEY_ID`) |
 | `MEDICAL_KEY_VERSION` | `1` | 지금 키 버전 (새로 암호화할 때 씀). 키를 바꾸면 올리고, 옛 키는 `MEDICAL_KEY_V<버전>` 으로 남긴다 |

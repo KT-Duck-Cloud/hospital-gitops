@@ -14,7 +14,7 @@ readOnlyMode: false
 # SITE_NAME: hospital / aws. 시스템 상태(S1) 표시용
 siteName: ""
 # DB_URL: 계정 없는 DB 주소 (예: mysql://db.hospital.internal:3306/hospital). 사이트마다 다르다 (values-onprem.yaml / values-aws.yaml).
-# 계정·비밀번호는 여기 넣지 않는다. 아래 secrets.<databaseSecret> 의 DB_USERNAME·DB_PASSWORD 를 쓴다.
+# 비밀번호는 여기 넣지 않는다. 아래 secrets.<databaseSecret> 의 DB_PASSWORD 를 쓴다 (계정 이름은 services.<이름>.dbUsername).
 dbUrl: ""
 
 # FORWARDED_ALLOW_IPS: X-Forwarded-For 를 믿을 프록시(인그레스 컨트롤러) 주소. 쉼표로 여러 개, IP 대역(CIDR) 가능.
@@ -28,9 +28,14 @@ forwardedAllowIps: "127.0.0.1"
 # (예: --set hospitalPhone=02-1234-5678). 비우면 연락처 화면에 "등록된 번호가 없습니다". 예약 서비스(services.reservation.hospitalPhone)만 받는다.
 hospitalPhone: "02-0000-0000"
 
+# LOGIN_RATE_LIMIT_PER_MINUTE: 로그인 요청 제한 (분당 횟수). auth 서비스만 받는다.
+loginRateLimitPerMinute: 20
+
 # ---- 서비스별 설정 ----
 # image.tag 는 비워 둔다 (배포할 때 --set 으로 Git 커밋 값을 넣는다. APP_VERSION 에도 쓰인다).
-# databaseSecret: 아래 secrets 의 어느 DB 계정(DB_USERNAME·DB_PASSWORD)을 쓸지 (runtimeDatabase / readonlyDatabase)
+# dbUsername: DB 계정 이름 (DB_USERNAME). 비밀이 아니라 일반 값이다. auth·reservation=app_runtime, stats=app_readonly
+# databaseSecret: 아래 secrets 의 어느 Secret 에서 DB_PASSWORD 를 받을지 (runtimeDatabase / readonlyDatabase)
+# loginRateLimit: LOGIN_RATE_LIMIT_PER_MINUTE(위 loginRateLimitPerMinute)을 받는 서비스는 auth 뿐이다
 # metricsNodePort: /metrics 를 모니터링이 읽는 NodePort (Service 가 NodePort 로 열린다)
 services:
   auth:
@@ -39,7 +44,9 @@ services:
     image:
       repository: REPLACE_ME/reservation-app-auth
       tag: ""
+    dbUsername: app_runtime
     databaseSecret: runtimeDatabase
+    loginRateLimit: true
     metricsNodePort: 30801
     resources: {}          # 비우면 아래 defaultResources
   reservation:
@@ -48,6 +55,7 @@ services:
     image:
       repository: REPLACE_ME/reservation-app-reservation
       tag: ""
+    dbUsername: app_runtime
     databaseSecret: runtimeDatabase
     metricsNodePort: 30800
     medicalKey: true       # 진료기록 복호화 키를 받는 서비스는 예약 서비스뿐이다
@@ -59,7 +67,8 @@ services:
     image:
       repository: REPLACE_ME/reservation-app-stats
       tag: ""
-    databaseSecret: readonlyDatabase   # 조회 전용 계정 app_readonly
+    dbUsername: app_readonly           # 조회 전용 계정
+    databaseSecret: readonlyDatabase
     metricsNodePort: 30802
     resources: {}
     # S1 에서 /readyz 를 확인할 서비스 (SERVICE_URLS). 주소는 차트가 Service 이름으로 만든다.
@@ -91,13 +100,12 @@ imagePullSecrets: []       # 예: [{name: ecr-pull}] (레지스트리 인증이 
 # ---- 비밀 정보: 이미 클러스터에 있는 Secret 이름만 받는다. 차트는 Secret 을 만들지 않는다 ----
 # (Secret·Sealed Secrets 는 IaC·보안 담당이 만든다. 이 차트에 비밀값을 넣지 않는다.)
 secrets:
-  runtimeDatabase:          # auth·reservation: app_runtime 계정 (DB 주소는 위 dbUrl)
+  # DB Secret 에는 DB_PASSWORD 만 둔다. 계정 이름(DB_USERNAME)은 services.<이름>.dbUsername 이다.
+  runtimeDatabase:          # auth·reservation: app_runtime 계정의 비밀번호 (DB 주소는 위 dbUrl)
     name: reservation-app-db-runtime
-    usernameKey: DB_USERNAME
     passwordKey: DB_PASSWORD
-  readonlyDatabase:         # stats: app_readonly 계정
+  readonlyDatabase:         # stats: app_readonly 계정의 비밀번호
     name: reservation-app-db-readonly
-    usernameKey: DB_USERNAME
     passwordKey: DB_PASSWORD
   jwt:                      # JWT 서명 키 (세 서비스 동일, 32바이트 이상)
     name: reservation-app-jwt

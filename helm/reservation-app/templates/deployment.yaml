@@ -71,10 +71,7 @@ spec:
             - name: DB_URL
               value: {{ required "dbUrl 이 필요합니다 (계정 없는 주소, 예: mysql://호스트:3306/hospital)" $.Values.dbUrl | quote }}
             - name: DB_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $dbSecret.name }}
-                  key: {{ $dbSecret.usernameKey }}
+              value: {{ required (printf "services.%s.dbUsername 이 필요합니다 (auth·reservation=app_runtime, stats=app_readonly)" $name) $svc.dbUsername | quote }}
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -97,6 +94,10 @@ spec:
             {{- if $svc.hospitalPhone }}
             - name: HOSPITAL_PHONE
               value: {{ $.Values.hospitalPhone | quote }}
+            {{- end }}
+            {{- if $svc.loginRateLimit }}
+            - name: LOGIN_RATE_LIMIT_PER_MINUTE
+              value: {{ $.Values.loginRateLimitPerMinute | quote }}
             {{- end }}
             {{- if $.Values.secrets.dbCa.name }}
             - name: DB_SSL_CA

@@ -106,6 +106,48 @@ def test_helm_hospital_phone_env_only_in_reservation():
                 if v) == ["02-1234-5678"]
 
 
+def _env_by_deployment(rendered: str) -> dict[str, dict[str, str]]:
+    """렌더된 API Deployment 마다 {env 이름: 'value:<값>' 또는 'secret:<Secret 이름>/<키>'}."""
+    out = {}
+    for doc in rendered.split("\n---\n"):
+        m = re.search(r"kind: Deployment\nmetadata:\n\s+name: (\S+)", doc)
+        if not m:
+            continue
+        env = {}
+        for e in re.finditer(r"- name: (\w+)\n(\s+)(value: \"([^\"]*)\"|valueFrom:\n\s+secretKeyRef:\n\s+name: (\S+)\n\s+key: (\S+))", doc):
+            env[e.group(1)] = f"value:{e.group(4)}" if e.group(4) is not None else f"secret:{e.group(5)}/{e.group(6)}"
+        out[m.group(1)] = env
+    return out
+
+
+@pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
+def test_helm_db_username_is_plain_value_and_only_password_is_secret():
+    got = _env_by_deployment(_helm())
+    by_svc = {s: next(env for name, env in got.items() if name.endswith(s) or s in name) for s in SERVICES}
+    assert by_svc["auth"]["DB_USERNAME"] == "value:app_runtime"
+    assert by_svc["reservation"]["DB_USERNAME"] == "value:app_runtime"
+    assert by_svc["stats"]["DB_USERNAME"] == "value:app_readonly"
+    assert by_svc["auth"]["DB_PASSWORD"] == "secret:reservation-app-db-runtime/DB_PASSWORD"
+    assert by_svc["reservation"]["DB_PASSWORD"] == "secret:reservation-app-db-runtime/DB_PASSWORD"
+    assert by_svc["stats"]["DB_PASSWORD"] == "secret:reservation-app-db-readonly/DB_PASSWORD"
+    # 계정 이름을 Secret 에서 읽지 않는다. 나머지 Secret(JWT·진료기록 키)은 그대로
+    assert not any(v.endswith("/DB_USERNAME") for env in by_svc.values() for v in env.values())
+    assert by_svc["auth"]["JWT_SECRET"].startswith("secret:reservation-app-jwt/")
+    assert by_svc["reservation"]["MEDICAL_KEY"].startswith("secret:reservation-app-medical-key/")
+    # --set 으로 계정 이름을 바꿀 수 있다
+    got = _env_by_deployment(_helm("--set=services.stats.dbUsername=other_ro"))
+    assert next(env for name, env in got.items() if "stats" in name)["DB_USERNAME"] == "value:other_ro"
+
+
+@pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
+def test_helm_login_rate_limit_only_in_auth():
+    def limits(*args):
+        return {name: env.get("LOGIN_RATE_LIMIT_PER_MINUTE") for name, env in _env_by_deployment(_helm(*args)).items()}
+    got = limits()
+    assert [(n, v) for n, v in got.items() if v] == [(next(n for n in got if "auth" in n), "value:20")]
+    assert [v for v in limits("--set=loginRateLimitPerMinute=5").values() if v] == ["value:5"]
+
+
 GRACEFUL_SHUTDOWN_SECONDS = 20  # 서비스 Dockerfile 의 --timeout-graceful-shutdown
 
 
