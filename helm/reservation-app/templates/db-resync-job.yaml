@@ -1,0 +1,103 @@
+{{- if .Values.dbResync.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-failback-resync
+  labels:
+    app.kubernetes.io/name: db-failback-resync
+    app.kubernetes.io/part-of: reservation-app
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-failback-resync
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: db-resyncer
+          image: {{ .Values.dbResync.image | default "mysql:8.4" }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - "sh"
+            - "-c"
+            - |
+              set -e
+              
+              ROOT_PASS="$DB_ROOT_PASSWORD"
+              TARGET_MASTER="{{ .Values.dbResync.targetMasterIp | default "" }}"
+              
+              # 1. 대상 마스터 IP 결정 (지정값이 없으면 후보 노드 자동 탐색)
+              if [ -z "$TARGET_MASTER" ]; then
+                echo "Target master not specified. Auto-detecting active master..."
+                CANDIDATES="100.64.0.32 100.64.0.52"
+                for IP in $CANDIDATES; do
+                  # 현재 로컬 db-service IP와 동일하면 건너뜀
+                  LOCAL_IP=$(getent hosts db-service | awk '{ print $1 }')
+                  if [ "$IP" = "$LOCAL_IP" ]; then
+                    continue
+                  fi
+                  
+                  # 대상 노드의 read_only 상태 확인 (0이면 Master)
+                  IS_RO=$(mysql -h "$IP" -u root -p"$ROOT_PASS" --connect-timeout=3 -se "SELECT @@read_only;" 2>/dev/null || echo "DOWN")
+                  if [ "$IS_RO" = "0" ]; then
+                    TARGET_MASTER="$IP"
+                    echo "Detected active master: $TARGET_MASTER"
+                    break
+                  fi
+                done
+              fi
+              
+              if [ -z "$TARGET_MASTER" ] || [ "$TARGET_MASTER" = "DOWN" ]; then
+                echo "Error: Could not find active master node."
+                exit 1
+              fi
+              
+              echo "Starting resync to master: $TARGET_MASTER"
+              
+              # 2. 로컬 DB 복제 중단 및 읽기 전용 모드 전환 (Split-Brain 방지)
+              mysql -h db-service -u root -p"$ROOT_PASS" <<EOF
+              STOP REPLICA;
+              SET GLOBAL read_only = ON;
+              SET GLOBAL super_read_only = ON;
+              
+              CHANGE REPLICATION SOURCE TO
+                SOURCE_HOST='${TARGET_MASTER}',
+                SOURCE_PORT=3306,
+                SOURCE_USER='repl_user',
+                SOURCE_PASSWORD='duckpass',
+                SOURCE_AUTO_POSITION=1,
+                GET_SOURCE_PUBLIC_KEY=1;
+              
+              START REPLICA;
+              EOF
+              
+              sleep 2
+              
+              # 3. 복제 상태 검증
+              STATUS=$(mysql -h db-service -u root -p"$ROOT_PASS" -e "SHOW REPLICA STATUS\G")
+              IO_RUNNING=$(echo "$STATUS" | grep "Replica_IO_Running:" | awk '{print $2}')
+              SQL_RUNNING=$(echo "$STATUS" | grep "Replica_SQL_Running:" | awk '{print $2}')
+              
+              if [ "$IO_RUNNING" = "Yes" ] && [ "$SQL_RUNNING" = "Yes" ]; then
+                echo "Replication resync success: SOURCE_HOST=${TARGET_MASTER}"
+                exit 0
+              else
+                echo "Error: Replication failed to start properly."
+                echo "$STATUS" | grep -E "Running|Error|Source_Host"
+                exit 1
+              fi
+          env:
+            - name: DB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: reservation-app-db-runtime
+                  key: DB_PASSWORD
+      volumes: []
+{{- end }}

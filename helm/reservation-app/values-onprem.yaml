@@ -38,3 +38,9 @@ dbPromote:
   enabled: true
   image: mysql:8.4
 
+dbResync:
+  enabled: false
+  image: mysql:8.4
+  targetMasterIp: ""
+
+
