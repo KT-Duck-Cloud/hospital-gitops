@@ -4,7 +4,13 @@
 
 readOnlyMode: false
 siteName: hospital
-dbUrl: mysql://REPLACE_ME_ONPREM_DB_HOST:3306/hospital   # 계정 없는 DB 주소. 계정은 Secret (values.yaml secrets)
+dbUrl: mysql://db-service:3306/hospital   # K8s 내부 db-service (각 슬롯의 vm2 DB 자동 연결)
+
+ingress:
+  className: traefik                      # 온프레미스 인그레스 컨트롤러 Traefik 사용
+
+image:
+  pullPolicy: IfNotPresent
 
 ingress:
   className: traefik   # 1조: MetalLB + Traefik
@@ -13,16 +19,20 @@ services:
   auth:
     replicaCount: 1
     image:
-      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-auth          # 온프레미스 레지스트리 주소
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-auth
+      tag: "latest"
   reservation:
     replicaCount: 1
     image:
-      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-reservation
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-reservation
+      tag: "latest"
   stats:
     replicaCount: 1
     image:
-      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-stats
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-stats
+      tag: "latest"
   web:
     replicaCount: 1
     image:
-      repository: REPLACE_ME_ONPREM_REGISTRY/reservation-app-web
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-web
+      tag: "latest"
