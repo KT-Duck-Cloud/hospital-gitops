@@ -8,11 +8,12 @@
 USE hospital;
 SET NAMES utf8mb4;  -- 클라이언트 기본 문자셋(latin1 등)과 관계없이 한글이 깨지지 않도록
 
-INSERT INTO departments (code, name) VALUES
-    ('IM',  '내과'),
-    ('OS',  '정형외과'),
-    ('PD',  '소아과'),
-    ('ADM', '원무과');
+-- 부서 대표 번호는 실제로 쓰이지 않는 가짜 번호 (02-0000-xxxx)
+INSERT INTO departments (code, name, phone) VALUES
+    ('IM',  '내과',     '02-0000-0101'),
+    ('OS',  '정형외과', '02-0000-0102'),
+    ('PD',  '소아과',   '02-0000-0103'),
+    ('ADM', '원무과',   '02-0000-0100');
 
 -- 의사 8명: 내과 3, 정형외과 3, 소아과 2 (원무과는 진료과가 아니라 의사 없음). user_id 는 seed_users.py 에서 연결
 INSERT INTO doctors (department_id, name, room_no, is_active)
@@ -69,7 +70,7 @@ INSERT INTO patients (chart_no, name, birth_date, phone) VALUES
 --   취소: n 이 10의 배수 (10건)
 --   접수: 지난 날짜 예약 중 취소가 아니고 n 이 4의 배수가 아닌 것 (33건). 대기번호는 진료과·KST 날짜별 1번부터
 INSERT INTO reservations
-    (request_id, patient_id, department_id, doctor_id, queue_no, reserved_at, visit_type,
+    (request_id, patient_id, department_id, doctor_id, queue_no, queue_date, reserved_at, visit_type,
      status, checkin_status, checked_in_at, memo, created_by, canceled_at, created_at, updated_at)
 WITH RECURSIVE seq (n) AS (
     SELECT 1
@@ -108,6 +109,7 @@ SELECT CONCAT('seed-', LPAD(t.n, 4, '0')),
            ROW_NUMBER() OVER (PARTITION BY t.department_id, DATE(t.reserved_at + INTERVAL 9 HOUR), t.is_checked_in
                               ORDER BY t.reserved_at, t.n)
        END,
+       IF(t.is_checked_in, DATE(t.reserved_at + INTERVAL 9 HOUR), NULL),   -- 대기번호를 매긴 KST 날짜
        t.reserved_at,
        IF(t.n % 4 = 1, 'FIRST', 'RETURN'),
        IF(t.is_canceled, 'CANCELED', 'BOOKED'),

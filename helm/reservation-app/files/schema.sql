@@ -18,6 +18,7 @@ CREATE TABLE departments (
     id          INT          NOT NULL AUTO_INCREMENT,
     code        VARCHAR(20)  NOT NULL,                 -- 예: IM(내과), OS(정형외과), ADM(원무과)
     name        VARCHAR(50)  NOT NULL,
+    phone       VARCHAR(20)  NULL,                     -- 부서 대표 번호 (공개 범위: shared/phone.py)
     created_at  DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at  DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
@@ -43,6 +44,7 @@ CREATE TABLE users (
     login_id            VARCHAR(50)   NOT NULL,
     password_hash       VARCHAR(255)  NOT NULL,        -- bcrypt 해시 (원문 저장 금지)
     name                VARCHAR(50)   NOT NULL,
+    work_phone          VARCHAR(20)   NULL,            -- 직원 업무용 연락처 (환자 계정은 NULL). 공개 범위: shared/phone.py
     role                ENUM('PATIENT', 'NURSE', 'DOCTOR', 'MANAGER', 'ADMIN',
                              'DEPT_HEAD', 'DIRECTOR', 'DEVELOPER', 'TESTER') NOT NULL,
     department_id       INT           NULL,            -- 직원만
@@ -100,10 +102,13 @@ CREATE TABLE reservations (
     department_id   INT           NOT NULL,
     doctor_id       INT           NULL,
     queue_no        INT           NULL,                 -- 접수 시 부서별·날짜별 대기번호
+    queue_date      DATE          NULL,                 -- 대기번호를 매긴 날짜 (KST). 접수 때 저장
     reserved_at     DATETIME(6)   NOT NULL,             -- 진료 예약 시각 (UTC)
     visit_type      ENUM('FIRST', 'RETURN')                 NOT NULL,                     -- 초진 / 재진
     status          ENUM('BOOKED', 'CANCELED')              NOT NULL DEFAULT 'BOOKED',    -- 취소해도 행은 남김
-    checkin_status  ENUM('NOT_CHECKED_IN', 'CHECKED_IN')    NOT NULL DEFAULT 'NOT_CHECKED_IN',
+    -- 진료 진행: 접수 전 → CHECKED_IN(진료대기) → IN_TREATMENT(진료중) → COMPLETED(진료완료). 앞으로만 간다 (앱이 검사)
+    checkin_status  ENUM('NOT_CHECKED_IN', 'CHECKED_IN', 'IN_TREATMENT', 'COMPLETED')
+                                                            NOT NULL DEFAULT 'NOT_CHECKED_IN',
     checked_in_at   DATETIME(6)   NULL,
     memo            VARCHAR(500)  NULL,
     created_by      BIGINT        NULL,                 -- 예약을 만든 계정
@@ -112,6 +117,10 @@ CREATE TABLE reservations (
     updated_at      DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_reservations_request_id (request_id),
+    -- 같은 진료과·같은 날 대기번호 중복 방지 (접수 전에는 queue_date·queue_no 가 NULL 이라 걸리지 않는다)
+    UNIQUE KEY uq_reservations_queue (department_id, queue_date, queue_no),
+    -- 진료기록·영수증이 (예약, 환자) 쌍으로 이 예약을 가리키게 하는 외래키의 대상
+    UNIQUE KEY uq_reservations_id_patient (id, patient_id),
     KEY idx_reservations_department_reserved (department_id, reserved_at),
     KEY idx_reservations_patient_reserved    (patient_id, reserved_at),
     KEY idx_reservations_doctor_reserved     (doctor_id, reserved_at),
@@ -136,8 +145,11 @@ CREATE TABLE medical_records (
     updated_at       DATETIME(6)    NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_medical_records_reservation_id (reservation_id),   -- 예약 1건에 기록 최대 1건 (ERD ||--o|)
+    KEY idx_medical_records_reservation_patient (reservation_id, patient_id),
     CONSTRAINT fk_medical_records_patient     FOREIGN KEY (patient_id)     REFERENCES patients (id),
-    CONSTRAINT fk_medical_records_reservation FOREIGN KEY (reservation_id) REFERENCES reservations (id),
+    -- 예약의 환자와 기록의 환자가 다르면 저장 거부 (reservation_id 가 NULL 이면 검사하지 않음)
+    CONSTRAINT fk_medical_records_reservation_patient
+        FOREIGN KEY (reservation_id, patient_id) REFERENCES reservations (id, patient_id),
     CONSTRAINT fk_medical_records_doctor      FOREIGN KEY (doctor_id)      REFERENCES doctors (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -153,8 +165,11 @@ CREATE TABLE receipts (
     updated_at      DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
     UNIQUE KEY uq_receipts_reservation_id (reservation_id),          -- 예약 1건에 영수증 최대 1건 (ERD ||--o|)
-    CONSTRAINT fk_receipts_patient     FOREIGN KEY (patient_id)     REFERENCES patients (id),
-    CONSTRAINT fk_receipts_reservation FOREIGN KEY (reservation_id) REFERENCES reservations (id)
+    KEY idx_receipts_reservation_patient (reservation_id, patient_id),
+    CONSTRAINT fk_receipts_patient FOREIGN KEY (patient_id) REFERENCES patients (id),
+    -- 예약의 환자와 영수증의 환자가 다르면 저장 거부
+    CONSTRAINT fk_receipts_reservation_patient
+        FOREIGN KEY (reservation_id, patient_id) REFERENCES reservations (id, patient_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 감사 로그 (주인: 인증, 모든 서비스 INSERT)

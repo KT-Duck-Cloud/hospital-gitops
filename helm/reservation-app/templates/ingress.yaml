@@ -4,7 +4,7 @@
 {{- if .Values.ingress.enabled }}
 {{- $routes := list
   (dict "service" "auth" "paths" (list "/api/v1/auth" "/api/v1/admin"))
-  (dict "service" "reservation" "paths" (list "/api/v1/reservations" "/api/v1/queue" "/api/v1/patients" "/api/v1/departments" "/api/v1/doctors" "/api/v1/me"))
+  (dict "service" "reservation" "paths" (list "/api/v1/reservations" "/api/v1/queue" "/api/v1/patients" "/api/v1/departments" "/api/v1/doctors" "/api/v1/doctor" "/api/v1/me" "/api/v1/staff" "/api/v1/contacts" "/api/v1/slots"))
   (dict "service" "stats" "paths" (list "/api/v1/stats" "/api/v1/system"))
 }}
 apiVersion: networking.k8s.io/v1

@@ -71,6 +71,8 @@ services:
       # 진료기록 키. 없으면 R11(내 진료기록)만 503 이고 나머지는 동작한다.
       MEDICAL_KEY: ${MEDICAL_KEY:-}
       MEDICAL_KEY_VERSION: ${MEDICAL_KEY_VERSION:-1}
+      # 연락처 화면의 병원 대표 번호. 실제로 쓰이지 않는 가짜 번호 (운영은 배포 환경에서 넣는다)
+      HOSPITAL_PHONE: "02-0000-0000"
     ports:
       - "8000:8000"
     depends_on:

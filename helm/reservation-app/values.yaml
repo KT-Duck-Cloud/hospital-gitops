@@ -3,14 +3,14 @@
 # 설치 예 (온프레미스):
 #   helm upgrade --install rsv helm/reservation-app -n hospital \
 #     -f helm/reservation-app/values-onprem.yaml \
-#     --set services.auth.image.tag=<커밋> --set services.reservation.image.tag=<커밋> --set services.stats.image.tag=<커밋> \n#     --set services.web.image.tag=<커밋>
+#     --set services.auth.image.tag=<커밋> --set services.reservation.image.tag=<커밋> --set services.stats.image.tag=<커밋> \
+#     --set services.web.image.tag=<커밋>
 # 서비스 하나만 바꿀 때 (나머지는 그대로):
 #   helm upgrade rsv helm/reservation-app -n hospital --reuse-values --set services.auth.image.tag=<새 커밋>
 
 # ---- 사이트 공통 (세 서비스에 함께 적용. DR 전환 때 한 번에 바뀐다) ----
 # READ_ONLY_MODE: true 면 GET 외 요청은 503 (DR 대기)
 readOnlyMode: false
-# SITE_NAME: hospital / aws. 시스템 상태(S1) 표시용
 siteName: "hospital"
 # DB_URL: 계정 없는 DB 주소. K8s 내부 db-service가 각 노드의 vm2 DB로 자동 라우팅합니다.
 dbUrl: "mysql://db-service:3306/hospital"
@@ -22,9 +22,18 @@ dbUrl: "mysql://db-service:3306/hospital"
 # 노드·브리지 주소가 포함된 넓은 대역(Pod 전체 대역 등)을 넣으면 NodePort 쪽에서 IP 를 속일 수 있다.
 forwardedAllowIps: "127.0.0.1"
 
+# HOSPITAL_PHONE: 병원 대표 번호 (연락처 화면). 공개 번호라 Secret 이 아니다. 지금 값은 가짜 번호이고 운영 값은 배포 담당이 바꾼다
+# (예: --set hospitalPhone=02-1234-5678). 비우면 연락처 화면에 "등록된 번호가 없습니다". 예약 서비스(services.reservation.hospitalPhone)만 받는다.
+hospitalPhone: "02-0000-0000"
+
+# LOGIN_RATE_LIMIT_PER_MINUTE: 로그인 요청 제한 (분당 횟수). auth 서비스만 받는다.
+loginRateLimitPerMinute: 20
+
 # ---- 서비스별 설정 ----
 # image.tag 는 비워 둔다 (배포할 때 --set 으로 Git 커밋 값을 넣는다. APP_VERSION 에도 쓰인다).
-# databaseSecret: 아래 secrets 의 어느 DB 계정(DB_USERNAME·DB_PASSWORD)을 쓸지 (runtimeDatabase / readonlyDatabase)
+# dbUsername: DB 계정 이름 (DB_USERNAME). 비밀이 아니라 일반 값이다. auth·reservation=app_runtime, stats=app_readonly
+# databaseSecret: 아래 secrets 의 어느 Secret 에서 DB_PASSWORD 를 받을지 (runtimeDatabase / readonlyDatabase)
+# loginRateLimit: LOGIN_RATE_LIMIT_PER_MINUTE(위 loginRateLimitPerMinute)을 받는 서비스는 auth 뿐이다
 # metricsNodePort: /metrics 를 모니터링이 읽는 NodePort (Service 가 NodePort 로 열린다)
 services:
   auth:
@@ -33,7 +42,9 @@ services:
     image:
       repository: 100.64.0.41:8086/duckcloud/reservation-app-auth
       tag: "latest"
+    dbUsername: app_runtime
     databaseSecret: runtimeDatabase
+    loginRateLimit: true
     metricsNodePort: 30801
     resources: {}
   reservation:
@@ -42,9 +53,11 @@ services:
     image:
       repository: 100.64.0.41:8086/duckcloud/reservation-app-reservation
       tag: "latest"
+    dbUsername: app_runtime
     databaseSecret: runtimeDatabase
     metricsNodePort: 30800
     medicalKey: true
+    hospitalPhone: true
     resources: {}
   stats:
     enabled: true
@@ -52,6 +65,7 @@ services:
     image:
       repository: 100.64.0.41:8086/duckcloud/reservation-app-stats
       tag: "latest"
+    dbUsername: app_readonly
     databaseSecret: readonlyDatabase
     metricsNodePort: 30802
     resources: {}
@@ -81,13 +95,12 @@ imagePullSecrets: []       # 예: [{name: ecr-pull}] (레지스트리 인증이 
 # ---- 비밀 정보: 이미 클러스터에 있는 Secret 이름만 받는다. 차트는 Secret 을 만들지 않는다 ----
 # (Secret·Sealed Secrets 는 IaC·보안 담당이 만든다. 이 차트에 비밀값을 넣지 않는다.)
 secrets:
-  runtimeDatabase:          # auth·reservation: app_runtime 계정 (DB 주소는 위 dbUrl)
+  # DB Secret 에는 DB_PASSWORD 만 둔다. 계정 이름(DB_USERNAME)은 services.<이름>.dbUsername 이다.
+  runtimeDatabase:          # auth·reservation: app_runtime 계정의 비밀번호 (DB 주소는 위 dbUrl)
     name: reservation-app-db-runtime
-    usernameKey: DB_USERNAME
     passwordKey: DB_PASSWORD
-  readonlyDatabase:         # stats: app_readonly 계정
+  readonlyDatabase:         # stats: app_readonly 계정의 비밀번호
     name: reservation-app-db-readonly
-    usernameKey: DB_USERNAME
     passwordKey: DB_PASSWORD
   jwt:                      # JWT 서명 키 (세 서비스 동일, 32바이트 이상)
     name: reservation-app-jwt
