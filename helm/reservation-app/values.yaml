@@ -213,3 +213,12 @@ migrate:
     limits:
       cpu: 250m
       memory: 128Mi
+
+# ---- DR automation jobs (off by default, turned on in site values) ----
+dbPromote:
+  enabled: false
+  image: mysql:8.4
+dbResync:
+  enabled: false
+  image: mysql:8.4
+  targetMasterIp: ""
