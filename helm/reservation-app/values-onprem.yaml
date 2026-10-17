@@ -1,13 +1,12 @@
-# 1조: 병원 온프레미스 (kubeadm). 평상시 운영 사이트.
-# 사용: helm upgrade --install rsv helm/reservation-app -n hospital -f values-onprem.yaml --set services.<이름>.image.tag=<커밋> ...
-# 팀원 VM 이 작아서 서비스마다 1개씩 띄운다.
+# 1조: 병원 온프레미스 및 AWS 공통 배포 설정
+# 사용: helm upgrade --install rsv helm/reservation-app -n hospital -f values-onprem.yaml
 
 readOnlyMode: false
 siteName: hospital
 dbUrl: mysql://db-service:3306/hospital   # K8s 내부 db-service (각 슬롯의 vm2 DB 자동 연결)
 
 ingress:
-  className: traefik                      # 온프레미스 인그레스 컨트롤러 Traefik 사용
+  className: traefik                      # 인그레스 컨트롤러 Traefik 사용
 
 image:
   pullPolicy: IfNotPresent
@@ -34,11 +33,14 @@ services:
       repository: 100.64.0.41:8086/duckcloud/reservation-app-web
       tag: "latest"
 
+# 전체 DR 클러스터 DB 목록 (사설망 Tailscale IP)
+# db-promote-job이 이 목록을 순회하며 전체 DB 복제 체인을 자동 갱신합니다.
 dbClusterNodes:
-  - "100.64.0.32"
-  - "100.64.0.52"
-  - "100.64.0.72"
-  - "100.64.0.92"
+  - "100.64.0.32"   # Slot 3 (홍석 DB)
+  - "100.64.0.52"   # Slot 5 (혜미 DB)
+  - "100.64.0.72"   # Slot 7 (태현 DB)
+  - "100.64.0.92"   # Slot 9 (멤버4 DB)
+  # - "100.64.0.XXX" # [AWS 추가 위치] AWS DB 인스턴스 생성 시 여기에 Tailscale 사설 IP를 추가하세요.
 
 dbPromote:
   enabled: true
