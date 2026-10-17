@@ -11,12 +11,7 @@ spec:
     repoURL: https://github.com/KT-Duck-Cloud/hospital-gitops.git
     targetRevision: main
     path: helm/reservation-app
-    helm:
-      valueFiles:
-        - values-onprem.yaml
   destination:
-    # 기본 운영(Active) K8s API 서버 주소 (홍석: 100.64.0.31)
-    # 페일오버 발생 시 dr-control이 혜미(100.64.0.51), 태현(100.64.0.71), 또는 AWS K8s IP(100.64.0.XXX)로 자동 패치합니다.
     server: https://100.64.0.31:6443
     namespace: default
   syncPolicy:
