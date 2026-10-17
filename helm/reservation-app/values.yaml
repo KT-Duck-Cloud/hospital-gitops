@@ -11,11 +11,9 @@
 # ---- 사이트 공통 (세 서비스에 함께 적용. DR 전환 때 한 번에 바뀐다) ----
 # READ_ONLY_MODE: true 면 GET 외 요청은 503 (DR 대기)
 readOnlyMode: false
-# SITE_NAME: hospital / aws. 시스템 상태(S1) 표시용
-siteName: ""
-# DB_URL: 계정 없는 DB 주소 (예: mysql://db.hospital.internal:3306/hospital). 사이트마다 다르다 (values-onprem.yaml / values-aws.yaml).
-# 비밀번호는 여기 넣지 않는다. 아래 secrets.<databaseSecret> 의 DB_PASSWORD 를 쓴다 (계정 이름은 services.<이름>.dbUsername).
-dbUrl: ""
+siteName: "hospital"
+# DB_URL: 계정 없는 DB 주소. K8s 내부 db-service가 각 노드의 vm2 DB로 자동 라우팅합니다.
+dbUrl: "mysql://db-service:3306/hospital"
 
 # FORWARDED_ALLOW_IPS: X-Forwarded-For 를 믿을 프록시(인그레스 컨트롤러) 주소. 쉼표로 여러 개, IP 대역(CIDR) 가능.
 # 여기 있는 주소에서 온 요청만 X-Forwarded-For 의 실제 클라이언트 IP 를 쓴다 (감사 로그 client_ip, 로그인 IP 제한).
@@ -42,45 +40,42 @@ services:
     enabled: true
     replicaCount: 1
     image:
-      repository: REPLACE_ME/reservation-app-auth
-      tag: ""
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-auth
+      tag: "latest"
     dbUsername: app_runtime
     databaseSecret: runtimeDatabase
     loginRateLimit: true
     metricsNodePort: 30801
-    resources: {}          # 비우면 아래 defaultResources
+    resources: {}
   reservation:
     enabled: true
     replicaCount: 1
     image:
-      repository: REPLACE_ME/reservation-app-reservation
-      tag: ""
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-reservation
+      tag: "latest"
     dbUsername: app_runtime
     databaseSecret: runtimeDatabase
     metricsNodePort: 30800
-    medicalKey: true       # 진료기록 복호화 키를 받는 서비스는 예약 서비스뿐이다
-    hospitalPhone: true    # HOSPITAL_PHONE(병원 대표 번호)을 받는 서비스는 예약 서비스뿐이다 (연락처 R19)
+    medicalKey: true
+    hospitalPhone: true
     resources: {}
   stats:
     enabled: true
     replicaCount: 1
     image:
-      repository: REPLACE_ME/reservation-app-stats
-      tag: ""
-    dbUsername: app_readonly           # 조회 전용 계정
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-stats
+      tag: "latest"
+    dbUsername: app_readonly
     databaseSecret: readonlyDatabase
     metricsNodePort: 30802
     resources: {}
-    # S1 에서 /readyz 를 확인할 서비스 (SERVICE_URLS). 주소는 차트가 Service 이름으로 만든다.
     checkServices: [auth, reservation]
-  # 화면(nginx). DB·JWT·Secret 을 받지 않는다. Ingress 의 "/" 를 맡고, 클러스터 안에서만 연다 (ClusterIP, /metrics 없음).
-  # Pod 안 nginx 의 /api/v1/* 전달은 Ingress 를 거치지 않는 경우(포트 포워드 등)용이다. 평소 API 는 Ingress 가 바로 서비스로 보낸다.
   web:
     enabled: true
     replicaCount: 1
     image:
-      repository: REPLACE_ME/reservation-app-web
-      tag: ""
+      repository: 100.64.0.41:8086/duckcloud/reservation-app-web
+      tag: "latest"
     containerPort: 8080    # nginx-unprivileged (root 아님)
     resources:
       requests:
@@ -142,7 +137,7 @@ metrics:
 
 ingress:
   enabled: true
-  className: nginx          # k3s 기본 traefik 을 쓰면 traefik 으로 바꾼다
+  className: traefik
   host: ""                  # 비우면 모든 호스트
   tls: []                   # 예: [{secretName: rsv-tls, hosts: [rsv.example.com]}]
   annotations: {}
@@ -213,3 +208,22 @@ migrate:
     limits:
       cpu: 250m
       memory: 128Mi
+
+# 전체 DR 클러스터 DB 목록 (사설망 Tailscale IP)
+# db-promote-job이 이 목록을 순회하며 전체 DB 복제 체인을 자동 갱신합니다.
+dbClusterNodes:
+  - "100.64.0.32"   # Slot 3 (홍석 DB)
+  - "100.64.0.52"   # Slot 5 (혜미 DB)
+  - "100.64.0.72"   # Slot 7 (태현 DB)
+  - "100.64.0.92"   # Slot 9 (멤버4 DB)
+  # - "100.64.0.XXX" # [AWS 추가 위치] AWS DB 인스턴스 생성 시 여기에 Tailscale 사설 IP를 추가하세요.
+
+dbPromote:
+  enabled: true
+  image: mysql:8.4
+
+dbResync:
+  enabled: false
+  image: mysql:8.4
+  targetMasterIp: ""
+

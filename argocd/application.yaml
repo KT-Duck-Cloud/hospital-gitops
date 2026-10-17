@@ -11,9 +11,6 @@ spec:
     repoURL: https://github.com/KT-Duck-Cloud/hospital-gitops.git
     targetRevision: main
     path: helm/reservation-app
-    helm:
-      valueFiles:
-        - values-onprem.yaml
   destination:
     server: https://100.64.0.31:6443
     namespace: default

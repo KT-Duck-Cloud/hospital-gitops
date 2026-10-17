@@ -9,9 +9,7 @@ argocd/                 ArgoCD Application 매니페스트 및 dr-control 연동
 helm/reservation-app/   병원 마이크로서비스 Helm 차트 (auth, reservation, stats, web)
   templates/
     db-promote-job.yaml  ArgoCD PreSync Hook: DR 절체 시 Replica DB를 Master로 자동 승격
-    db-resync-job.yaml   ArgoCD Hook: 장애 복구(Failback) 시 Active Master 탐색 및 복제 재동기화
-  values-onprem.yaml    온프레미스(kubeadm) 배포 설정 (기본값)
-  values-aws.yaml       AWS(k3s) 대기 사이트 배포 설정
+  values.yaml           단일 통합 배포 설정 (온프레미스/AWS 공통)
 db/                     MySQL 초기 스키마 및 마이그레이션 SQL
 docs/                   API 명세 및 아키텍처 문서
 tools/                  DR 훈련용 데이터 정합성 검증 스크립트 (data_verifier.py)
