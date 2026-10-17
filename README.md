@@ -1,60 +1,45 @@
 # hospital-gitops
 
-병원 예약 시스템의 배포 설정과 DB 스키마, 로컬 개발 환경.
+병원 예약 시스템의 GitOps 배포 매니페스트 및 DR 절체 자동화 설정 저장소.
 
-## 구조
-
-```
-helm/reservation-app/   Helm 차트 (values-onprem / values-aws / values-dr-active)
-db/                     schema.sql, grants.sql, seed.sql, 마이그레이션, MySQL 초기화 스크립트
-docker-compose.yml      로컬 개발용 (MySQL + 서비스 3개 + 화면)
-.env.example            로컬 환경변수 이름 목록 (값은 비어 있음)
-scripts/make_env.ps1    .env.example 로 .env 를 만든다 (무작위 비밀번호·키)
-docs/                   API 명세, ERD
-tools/data_verifier.py  DR 훈련용 예약 기록·검증 도구
-tests/                  배포 설정·검증 도구 테스트
-```
-
-## 로컬 개발 환경
-
-`docker-compose.yml` 은 옆 폴더의 저장소를 빌드한다. 5개 저장소를 같은 폴더 아래에 나란히 clone 한다.
+## 저장소 구조
 
 ```
-hospital-repos/
-  hospital-frontend/  hospital-backend-auth/  hospital-backend-reservation/  hospital-backend-stats/  hospital-gitops/
+argocd/                 ArgoCD Application 매니페스트 및 dr-control 연동 트리거 스크립트
+helm/reservation-app/   병원 마이크로서비스 Helm 차트 (auth, reservation, stats, web)
+  templates/
+    db-promote-job.yaml  ArgoCD PreSync Hook: DR 절체 시 Replica DB를 Master로 자동 승격
+    db-resync-job.yaml   ArgoCD Hook: 장애 복구(Failback) 시 Active Master 탐색 및 복제 재동기화
+  values-onprem.yaml    온프레미스(kubeadm) 배포 설정 (기본값)
+  values-aws.yaml       AWS(k3s) 대기 사이트 배포 설정
+db/                     MySQL 초기 스키마 및 마이그레이션 SQL
+docs/                   API 명세 및 아키텍처 문서
+tools/                  DR 훈련용 데이터 정합성 검증 스크립트 (data_verifier.py)
+tests/                  Helm 차트 및 설정 테스트
 ```
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\make_env.ps1   # .env 생성 (Git 에 올리지 않는다)
-docker compose up -d --build                                     # 화면 http://localhost:8080
-```
+## 재해복구(DR) 페일오버 아키텍처
 
-## 테스트
+1. **감시 및 판단 (mon & dr-control)**
+   - 모니터링 서버가 각 사이트(`/readyz`) 헬스체크 실패 감지.
+   - `dr-control`이 새 운영 타겟 IP(예: `100.64.0.51`)를 결정하고 트래픽 라우팅을 갱신.
 
-```powershell
-python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest tests
-```
+2. **ArgoCD 연동 절체 (dr-control -> ArgoCD)**
+   - `dr-control`이 ArgoCD Application의 배포 대상 목적지를 새 클러스터로 지정하고 Sync를 트리거.
+   ```bash
+   ./argocd/failover-trigger.sh 100.64.0.51
+   ```
 
-Dockerfile 검사는 옆 폴더의 `hospital-backend-*` 를, Helm 검사는 `helm` 명령을 쓴다 (없으면 건너뛴다).
+3. **DB 마스터 자동 승격 (PreSync Hook)**
+   - `db-promote-job`이 앱 파드 기동 전 타겟 노드의 MySQL에 접속하여 복제 중단 및 쓰기 활성화 실행.
+   ```sql
+   STOP REPLICA;
+   SET GLOBAL read_only = OFF;
+   SET GLOBAL super_read_only = OFF;
+   ```
 
-## 환경변수 (.env, 로컬 compose)
+4. **애플리케이션 기동 (Main Sync)**
+   - 병원 마이크로서비스 파드 4개(`auth`, `reservation`, `stats`, `web`) 기동 및 서비스 개시.
 
-| 이름 | 설명 |
-|---|---|
-| `MYSQL_ROOT_PASSWORD` | 로컬 MySQL 관리자 |
-| `APP_RUNTIME_PASSWORD` | DB 계정 app_runtime (auth · reservation) |
-| `APP_READONLY_PASSWORD` | DB 계정 app_readonly (stats) |
-| `APP_MIGRATE_PASSWORD` | DB 계정 app_migrate (스키마 변경) |
-| `JWT_SECRET` | JWT 서명 키 (세 서비스 같은 값) |
-| `MEDICAL_KEY` · `MEDICAL_KEY_VERSION` | 진료기록 암호화 키 |
-
-검증 도구: `VERIFIER_BASE_URL`, `VERIFIER_AUTH_URL`, `VERIFIER_LOGIN_IDS`, `VERIFIER_PASSWORD`, `VERIFIER_DATABASE_URL`, `VERIFIER_DB_SSL_CA`, `VERIFIER_PATIENT_QUERY` (사용법은 `tools/data_verifier.py` 맨 위 설명).
-
-운영(Helm)에서는 비밀 값을 Kubernetes Secret 으로 주입한다. 값은 이 저장소에 넣지 않는다.
-
-## 코드 원본
-
-이 저장소의 코드는 `reservation-app` 에서 `scripts/sync_to_repos.ps1` 로 복사한다.
-README.md · .gitignore · .gitattributes · .github/ 는 이 저장소에서 직접 관리한다 (복사 대상 아님).
+5. **장애 복구 후 재동기화 (Failback)**
+   - 복구된 이전 노드는 `dbResync.enabled: true` 설정을 통해 현재 활성 마스터의 Replica로 자동 재구성.
