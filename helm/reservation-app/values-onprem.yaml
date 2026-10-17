@@ -34,6 +34,12 @@ services:
       repository: 100.64.0.41:8086/duckcloud/reservation-app-web
       tag: "latest"
 
+dbClusterNodes:
+  - "100.64.0.32"
+  - "100.64.0.52"
+  - "100.64.0.72"
+  - "100.64.0.92"
+
 dbPromote:
   enabled: true
   image: mysql:8.4
@@ -42,5 +48,3 @@ dbResync:
   enabled: false
   image: mysql:8.4
   targetMasterIp: ""
-
-
