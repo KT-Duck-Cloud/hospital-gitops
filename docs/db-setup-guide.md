@@ -173,8 +173,8 @@ mysql -h <주 DB 주소> -u app_migrate -p --ssl-mode=REQUIRED < db/schema.sql
 **방법 B. Helm migrate Job** (쿠버네티스에서 자동으로 같은 파일 실행)
 
 ```bash
-helm upgrade --install rsv helm/reservation-app -n hospital \
-  -f helm/reservation-app/values-onprem.yaml \
+helm upgrade --install rsv helm/reservation-app -n default \
+  -f helm/reservation-app/values.yaml \
   --set migrate.enabled=true
 ```
 
@@ -323,7 +323,7 @@ SET GLOBAL read_only = OFF;
 | auth, reservation | `app_runtime` | `reservation-app-db-runtime` |
 | stats | `app_readonly` | `reservation-app-db-readonly` |
 
-두 Secret 모두 키는 `DB_PASSWORD` 하나만 있으면 됩니다 (`DB_USERNAME` 키는 더 이상 쓰지 않음). DB 접속 주소는 `values-onprem.yaml` 의 `dbUrl:` 에 있습니다 (지금은 `REPLACE_ME_ONPREM_DB_HOST` 로 비어 있음). TLS 서버 검증을 쓰려면 CA 인증서 Secret 을 `secrets.dbCa` 에 지정합니다 (없으면 암호화만 하고 서버 검증은 안 함).
+두 Secret 모두 키는 `DB_PASSWORD` 하나만 있으면 됩니다 (`DB_USERNAME` 키는 더 이상 쓰지 않음). DB 접속 주소는 `values.yaml` 의 `dbUrl:` 에 있습니다 (K8s 내부 `db-service` 주소). TLS 서버 검증을 쓰려면 CA 인증서 Secret 을 `secrets.dbCa` 에 지정합니다 (없으면 암호화만 하고 서버 검증은 안 함).
 
 > 왜 계정을 주소와 분리했나: 주소는 사이트마다 달라지고 비밀이 아니며, 비밀번호는 Secret 으로만 다뤄야 합니다. 합쳐서 쓰면 로그·설정 파일에 비밀번호가 남습니다.
 

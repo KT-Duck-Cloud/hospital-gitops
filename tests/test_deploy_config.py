@@ -64,7 +64,7 @@ def test_cmd_passes_forwarded_allow_ips_from_env(env_value, expected):
 
 def _helm(*args: str) -> str:
     tags = [f"--set=services.{s}.image.tag=t" for s in [*SERVICES, "web"]]  # web(화면)도 tag 가 필요하다
-    return subprocess.run(["helm", "template", "rsv", str(CHART), "-f", str(CHART / "values-onprem.yaml"), *tags,
+    return subprocess.run(["helm", "template", "rsv", str(CHART), "-f", str(CHART / "values.yaml"), *tags,
                            *args], capture_output=True, text=True, encoding="utf-8", check=True).stdout
 
 
@@ -152,7 +152,7 @@ GRACEFUL_SHUTDOWN_SECONDS = 20  # 서비스 Dockerfile 의 --timeout-graceful-sh
 
 
 @pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
-@pytest.mark.parametrize("values", ["values-onprem.yaml", "values-aws.yaml"])
+@pytest.mark.parametrize("values", ["values.yaml"])
 def test_helm_termination_grace_covers_graceful_shutdown(values):
     """preStop 대기 + uvicorn 종료 대기(20초) 가 terminationGracePeriodSeconds 안에 끝나야 처리 중 요청이 끊기지 않는다."""
     tags = [f"--set=services.{s}.image.tag=t" for s in [*SERVICES, "web"]]
@@ -207,9 +207,9 @@ def test_ingress_class_name_comes_from_values():
 
 
 @pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")
-@pytest.mark.parametrize("values", ["values-onprem.yaml", "values-aws.yaml"])
+@pytest.mark.parametrize("values", ["values.yaml"])
 def test_ingress_class_is_traefik_in_site_values(values):
-    """1조(MetalLB+Traefik), 2조(k3s 기본 Traefik) 모두 traefik. values.yaml 기본값(nginx)은 그대로 둔다."""
+    """1조(MetalLB+Traefik), 2조(k3s 기본 Traefik) 모두 traefik."""
     tags = [f"--set=services.{s}.image.tag=t" for s in [*SERVICES, "web"]]
     out = subprocess.run(["helm", "template", "rsv", str(CHART), "-f", str(CHART / values), *tags],
                          capture_output=True, text=True, encoding="utf-8", check=True).stdout
@@ -219,7 +219,7 @@ def test_ingress_class_is_traefik_in_site_values(values):
 
 def test_default_values_ingress_class_unchanged():
     text = (CHART / "values.yaml").read_text(encoding="utf-8")
-    assert re.search(r"^ingress:\n(?:.*\n)*?\s+className: nginx\b", text, re.M)
+    assert re.search(r"^ingress:\n(?:.*\n)*?\s+className: traefik\b", text, re.M)
 
 
 @pytest.mark.skipif(not shutil.which("helm"), reason="helm 이 없음")

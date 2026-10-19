@@ -58,18 +58,18 @@ spec:
 
                 echo "Reconfiguring replication target on ${TARGET_IP} to follow ${MY_DB_IP}..."
                 if ! mysql -h "$TARGET_IP" -u root -p"$DB_ROOT_PASSWORD" --connect-timeout=2 <<EOF 2>/dev/null
-STOP REPLICA;
-SET GLOBAL read_only = ON;
-SET GLOBAL super_read_only = ON;
-CHANGE REPLICATION SOURCE TO
-  SOURCE_HOST='${MY_DB_IP}',
-  SOURCE_PORT=3306,
-  SOURCE_USER='repl_user',
-  SOURCE_PASSWORD='${DB_ROOT_PASSWORD}',
-  SOURCE_AUTO_POSITION=1,
-  GET_SOURCE_PUBLIC_KEY=1;
-START REPLICA;
-EOF
+              STOP REPLICA;
+              SET GLOBAL read_only = ON;
+              SET GLOBAL super_read_only = ON;
+              CHANGE REPLICATION SOURCE TO
+                SOURCE_HOST='${MY_DB_IP}',
+                SOURCE_PORT=3306,
+                SOURCE_USER='repl_user',
+                SOURCE_PASSWORD='${DB_ROOT_PASSWORD}',
+                SOURCE_AUTO_POSITION=1,
+                GET_SOURCE_PUBLIC_KEY=1;
+              START REPLICA;
+              EOF
                 then
                   echo "Node ${TARGET_IP} is offline or unreachable. Skipping."
                   continue
