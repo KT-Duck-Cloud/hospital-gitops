@@ -1,0 +1,29 @@
+# 검토용 예시: 현재 reservation-app에 release 파일 연결을 추가할 때 비교한다.
+# 새 이름의 Application을 만들어 같은 자원을 중복 관리하지 않는다. 이 파일은 자동 적용되지 않는다.
+# 네 서비스의 releases 파일이 모두 채워지고 실제 노드 Pull이 성공한 후 연결한다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: reservation-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/KT-Duck-Cloud/hospital-gitops.git
+    targetRevision: main
+    path: helm/reservation-app
+    helm:
+      valueFiles:
+        - ../../releases/harbor/auth.yaml
+        - ../../releases/harbor/reservation.yaml
+        - ../../releases/harbor/stats.yaml
+        - ../../releases/harbor/web.yaml
+      valuesObject:
+        imagePullSecrets: [{name: harbor-pull}]
+        # DB 승격 설정은 원본 차트를 따른다. CI가 임의로 끄거나 승격 대상을 정하지 않는다.
+  destination:
+    server: https://100.64.0.31:6443
+    namespace: default
+  # 현재 DR-Control의 REST Sync 방식을 유지한다. automated는 아직 설정하지 않는다.
+  # 자동 동기화를 켜면 일반 이미지 변경에도 PreSync DB Job이 실행될 수 있다.
+  # 무승인 DR 전환은 DR-Control이 대상 변경 후 Sync를 요청하는 것으로 처리한다.

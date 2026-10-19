@@ -1,0 +1,3 @@
+# 사용 중단된 CI 직접 refresh용 예시. 원본 관리 설정에 적용하지 않는다.
+# 현재 CI에는 Argo CD 계정·API 토큰·Cloudflare Access 헤더가 필요하지 않다.
+# CI는 GitOps 이미지 파일만 갱신한다. DR-Control 계정과 권한은 별도로 설계한다.

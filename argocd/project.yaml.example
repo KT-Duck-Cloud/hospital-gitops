@@ -1,0 +1,26 @@
+# 선택 사항: AppProject를 default에서 duckcloud로 분리할 때만 검토한다. 현재 Application은 default를 사용한다.
+# 원본 application.yaml은 수정하지 않았다. 실제 Argo CD 자원에도 아직 적용하지 않았다.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: duckcloud
+  namespace: argocd
+spec:
+  sourceRepos:
+    - https://github.com/KT-Duck-Cloud/hospital-gitops.git
+  destinations:
+    - namespace: default
+      server: https://100.64.0.31:6443
+    - namespace: default
+      server: https://100.64.0.51:6443
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - {group: apps, kind: Deployment}
+    - {group: "", kind: Service}
+    - {group: "", kind: ConfigMap}
+    - {group: networking.k8s.io, kind: Ingress}
+    - {group: networking.k8s.io, kind: NetworkPolicy}
+    - {group: batch, kind: Job}
+    - {group: bitnami.com, kind: SealedSecret}
