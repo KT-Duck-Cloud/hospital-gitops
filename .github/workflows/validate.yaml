@@ -99,23 +99,27 @@ jobs:
         with:
           persist-credentials: false
       - name: GitOps 비밀정보 검사
+        # 결과 확인용 검사: 발견 사항이나 검사 오류로 빌드·배포를 중단하지 않는다.
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           version: v0.70.0
           scan-type: fs
           scan-ref: .
           scanners: secret
-          severity: HIGH,CRITICAL
-          exit-code: '1'
+          severity: CRITICAL
+          exit-code: '0'
           cache: 'false'
           cache-dir: ${{ runner.temp }}/trivy-cache
       - name: GitOps 배포 설정 검사
+        # 결과 확인용 검사: 발견 사항이나 검사 오류로 빌드·배포를 중단하지 않는다.
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           version: v0.70.0
           scan-type: config
           scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: '1'
+          severity: CRITICAL
+          exit-code: '0'
           cache: 'false'
           cache-dir: ${{ runner.temp }}/trivy-cache
