@@ -1,12 +1,12 @@
-# 공통 기본값. 사이트별 차이는 values-onprem.yaml / values-aws.yaml, DR 실행 때 바꾸는 값은 values-dr-active.yaml.
+# 공통 기본값. DR 실행 때 바꾸는 값은 values-dr-active.yaml.
 #
 # 설치 예 (온프레미스):
-#   helm upgrade --install rsv helm/reservation-app -n hospital \
-#     -f helm/reservation-app/values-onprem.yaml \
+#   helm upgrade --install rsv helm/reservation-app -n default \
+#     -f helm/reservation-app/values.yaml \
 #     --set services.auth.image.tag=<커밋> --set services.reservation.image.tag=<커밋> --set services.stats.image.tag=<커밋> \
 #     --set services.web.image.tag=<커밋>
 # 서비스 하나만 바꿀 때 (나머지는 그대로):
-#   helm upgrade rsv helm/reservation-app -n hospital --reuse-values --set services.auth.image.tag=<새 커밋>
+#   helm upgrade rsv helm/reservation-app -n default --reuse-values --set services.auth.image.tag=<새 커밋>
 
 # ---- 사이트 공통 (세 서비스에 함께 적용. DR 전환 때 한 번에 바뀐다) ----
 # READ_ONLY_MODE: true 면 GET 외 요청은 503 (DR 대기)
@@ -210,7 +210,8 @@ migrate:
       memory: 128Mi
 
 # 전체 DR 클러스터 DB 목록 (사설망 Tailscale IP)
-# db-promote-job이 이 목록을 순회하며 전체 DB 복제 체인을 자동 갱신합니다.
+# db-promote-job이 DB의 server_id로 승격 대상 IP(100.64.0.${SERVER_ID})를 계산하고 목록을 순회하며 전체 DB 복제 체인을 자동 갱신합니다.
+# 따라서 각 VM의 MySQL server_id는 반드시 Tailscale 사설 IP 끝자리와 일치해야 합니다 (예: 100.64.0.32 -> server_id 32).
 dbClusterNodes:
   - "100.64.0.32"   # Slot 3 (홍석 DB)
   - "100.64.0.52"   # Slot 5 (혜미 DB)
@@ -226,4 +227,3 @@ dbResync:
   enabled: false
   image: mysql:8.4
   targetMasterIp: ""
-
