@@ -36,7 +36,7 @@ spec:
               # 1. 대상 마스터 IP 결정 (지정값이 없으면 후보 노드 자동 탐색)
               if [ -z "$TARGET_MASTER" ]; then
                 echo "Target master not specified. Auto-detecting active master..."
-                CANDIDATES="100.64.0.32 100.64.0.52"
+                CANDIDATES="{{ range .Values.dbClusterNodes }}{{ . }} {{ end }}"
                 for IP in $CANDIDATES; do
                   # 현재 로컬 db-service IP와 동일하면 건너뜀
                   LOCAL_IP=$(getent hosts db-service | awk '{ print $1 }')
