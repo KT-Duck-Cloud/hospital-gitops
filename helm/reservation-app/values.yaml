@@ -213,11 +213,10 @@ migrate:
 # db-promote-job이 DB의 server_id로 승격 대상 IP(100.64.0.${SERVER_ID})를 계산하고 목록을 순회하며 전체 DB 복제 체인을 자동 갱신합니다.
 # 따라서 각 VM의 MySQL server_id는 반드시 Tailscale 사설 IP 끝자리와 일치해야 합니다 (예: 100.64.0.32 -> server_id 32).
 dbClusterNodes:
-  - "100.64.0.32"   # Slot 3 (홍석 DB)
-  - "100.64.0.52"   # Slot 5 (혜미 DB)
-  - "100.64.0.72"   # Slot 7 (태현 DB)
-  - "100.64.0.92"   # Slot 9 (멤버4 DB)
-  # - "100.64.0.XXX" # [AWS 추가 위치] AWS DB 인스턴스 생성 시 여기에 Tailscale 사설 IP를 추가하세요.
+  - "100.64.0.32"   # 홍석 DB
+  - "100.64.0.52"   # 혜미 DB
+  - "100.64.0.82"   # aws DB
+  # - "100.64.0.XXX" # [추가 위치] DB 인스턴스 생성 시 Tailscale 사설 IP를 추가
 
 dbPromote:
   enabled: true
