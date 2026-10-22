@@ -1,0 +1,33 @@
+# 2조 AWS t8 (Pilot Light — 0개) — 사이트마다 Application 하나 (2026-10-22). 지금 운영 사이트는 DR(duck-hsagent)이 정한다:
+#   아래 parameters 의 readOnlyMode · replicaCount 만 DR 이 Argo API 로 바꾸고 동기화 → Argo 가 파드를 띄우고 내린다
+#   이 파일의 parameters 값은 '처음 만들 때' 값 — 운영 중에는 DR 이 바꾼 값이 맞다 (Git 으로 되돌리지 않게 parameters 는 고치지 않는다)
+#   dbPromote · dbResync 는 늘 false — DB 승격 · 복귀는 DR 이 한다 (훅이 켜지면 동기화마다 DB 를 바꾼다)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rsv-aws
+  namespace: argocd
+  labels: {duckcloud/site: "aws", duckcloud/app: reservation}
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/KT-Duck-Cloud/hospital-gitops.git
+    targetRevision: main
+    path: helm/reservation-app
+    helm:
+      releaseName: rsv
+      valueFiles: [values.yaml, values-aws.yaml]
+      parameters:
+        - {name: readOnlyMode, value: "true"}
+        - {name: dbPromote.enabled, value: "false"}
+        - {name: dbResync.enabled, value: "false"}
+        - {name: services.auth.replicaCount, value: "0"}
+        - {name: services.reservation.replicaCount, value: "0"}
+        - {name: services.stats.replicaCount, value: "0"}
+        - {name: services.web.replicaCount, value: "0"}
+  destination:
+    server: https://100.64.0.81:6443
+    namespace: hospital
+  syncPolicy:
+    automated: {prune: false, selfHeal: true}   # selfHeal — 손으로 바꾼 것은 Application 값으로 되돌림 (DR 은 Application 값을 바꾸므로 충돌 없음)
+    syncOptions: [CreateNamespace=true, ApplyOutOfSyncOnly=true]

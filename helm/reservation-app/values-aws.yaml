@@ -1,0 +1,15 @@
+# 2조 AWS (t8) — values.yaml 위에 덮는 값. Argo CD Application rsv-aws 가 쓴다 (argocd/apps/rsv-aws.yaml)
+#   1조와 같은 차트 · 같은 이미지. 다른 것: 네임스페이스 hospital · siteName · DB 훅 끔 · 표 만들기 끔
+#   앱 수 · 쓰기 허용(readOnlyMode)은 여기서 정하지 않는다 — DR(duck-hsagent)이 Application parameters 로 바꾼다
+#   평소 0개 · 읽기 전용(Pilot Light), 승격 때 1개 · 쓰기
+siteName: aws
+dbUrl: mysql://db-service:3306/hospital
+image:
+  pullPolicy: IfNotPresent     # 이미지는 AWS 노드에 미리 받아 둠 — 온프레미스(Harbor)가 죽어도 뜬다
+# DB 승격 · 다시 맞추기는 DR 이 한다. 켜 두면 helm/Argo 동기화 때마다 이 DB 를 쓰기로 · 1조 DB 를 복제본으로 돌린다
+dbPromote:
+  enabled: false
+dbResync:
+  enabled: false
+migrate:
+  enabled: false               # 표 만들기는 1조 원본 DB 에서만 (AWS 는 복제본)
