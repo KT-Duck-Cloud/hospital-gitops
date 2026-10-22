@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# ⚠ 사용 중지 (2026-10-22) — 전환 판단 · DB 는 DR(duck-hsagent), 배포는 사이트별 Application(rsv-*). argocd/README-dr.md
+echo "사용 중지: argocd/README-dr.md 참고 (DR 이 전환)" >&2; exit 2
 set -euo pipefail
 
 # Failover execution script called by dr-control

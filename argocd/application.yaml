@@ -1,3 +1,5 @@
+# ⚠ 사용 중지 (2026-10-22) — 사이트별 Application(argocd/apps/rsv-*.yaml) + DR 판단으로 대체. argocd/README-dr.md
+#   이 Application 은 대상(destination)을 바꿔 사이트를 옮기고, Sync 때 dbPromote 훅이 t3 · t5 · AWS DB 를 바꾼다 — 남겨 두지 않는다
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
