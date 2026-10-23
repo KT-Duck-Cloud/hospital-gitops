@@ -1,43 +1,29 @@
 # hospital-gitops
 
-병원 예약 시스템의 GitOps 배포 매니페스트 및 DR 절체 자동화 설정 저장소.
+병원 예약 시스템의 Helm 차트와 Argo CD Application — 1조(t3 · t5) · AWS(t8) 가 같은 차트로 배포된다.
 
 ## 저장소 구조
 
 ```
-argocd/                 ArgoCD Application 매니페스트 및 dr-control 연동 트리거 스크립트
-helm/reservation-app/   병원 마이크로서비스 Helm 차트 (auth, reservation, stats, web)
-  templates/
-    db-promote-job.yaml  ArgoCD PreSync Hook: DR 절체 시 Replica DB를 Master로 자동 승격
-  values.yaml           단일 통합 배포 설정 (온프레미스/AWS 공통)
-db/                     MySQL 초기 스키마 및 마이그레이션 SQL
-docs/                   API 명세 및 아키텍처 문서
-tools/                  DR 훈련용 데이터 정합성 검증 스크립트 (data_verifier.py)
-tests/                  Helm 차트 및 설정 테스트
+argocd/
+  apps/rsv-t3.yaml · rsv-t5.yaml · rsv-aws.yaml   사이트별 Application (값 readOnlyMode · replicaCount 로 active · warm · off)
+  README-dr.md                                    DR 과 Argo 의 역할 나눔
+  application.yaml · failover-trigger.sh          예전 방식 — 사용 중지
+helm/reservation-app/   마이크로서비스 차트 (auth · reservation · stats · web)
+  values.yaml           공통 값 (온프레미스 기준)
+  values-aws.yaml       AWS(t8) 덮어쓰기 — 읽기 전용 · 0개
+  templates/db-promote-job.yaml · db-resync-job.yaml   DB 승격 · 재동기화 훅 — 기본 꺼짐
+db/                     MySQL 스키마 · 권한 · 마이그레이션
+docs/                   API 명세 · ERD · 권한표 · DB 설정
+tools/                  DR 훈련용 데이터 정합성 검증 (data_verifier.py)
+tests/                  차트 · 배포 설정 시험
 ```
 
-## 재해복구(DR) 페일오버 아키텍처
+## 배포와 DR
 
-1. **감시 및 판단 (mon & dr-control)**
-   - 모니터링 서버가 각 사이트(`/readyz`) 헬스체크 실패 감지.
-   - `dr-control`이 새 운영 타겟 IP(예: `100.64.0.51`)를 결정하고 트래픽 라우팅을 갱신.
+- 배포는 Argo CD(t4-vm2)가 사이트별 Application 으로 한다.
+- 전환 판단 · DB 승격 · 공개 입구 전환은 이 저장소 밖 DR(duck-hsagent)이 한다. DR 은 Application 의 값만 바꾸고, Argo 가 그 값대로 파드를 띄우고 내린다.
+- `dbPromote` · `dbResync` 훅은 켜지 않는다 — 켜면 동기화마다 DB 역할이 바뀌어 쓰기 DB 가 둘이 될 수 있다.
+- 사이트 역할(active · warm · off)은 DR 이 바꾸므로 여기 적지 않는다. 지금 상태는 상태 페이지에서 본다.
 
-2. **ArgoCD 연동 절체 (dr-control -> ArgoCD)**
-   - `dr-control`이 ArgoCD Application의 배포 대상 목적지를 새 클러스터로 지정하고 Sync를 트리거.
-   ```bash
-   ./argocd/failover-trigger.sh 100.64.0.51
-   ```
-
-3. **DB 마스터 자동 승격 (PreSync Hook)**
-   - `db-promote-job`이 앱 파드 기동 전 타겟 노드의 MySQL에 접속하여 복제 중단 및 쓰기 활성화 실행.
-   ```sql
-   STOP REPLICA;
-   SET GLOBAL read_only = OFF;
-   SET GLOBAL super_read_only = OFF;
-   ```
-
-4. **애플리케이션 기동 (Main Sync)**
-   - 병원 마이크로서비스 파드 4개(`auth`, `reservation`, `stats`, `web`) 기동 및 서비스 개시.
-
-5. **장애 복구 후 재동기화 (Failback)**
-   - 복구된 이전 노드는 `dbResync.enabled: true` 설정을 통해 현재 활성 마스터의 Replica로 자동 재구성.
+자세히: [`argocd/README-dr.md`](argocd/README-dr.md)
