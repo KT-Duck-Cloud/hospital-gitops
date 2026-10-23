@@ -1,0 +1,26 @@
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc $svc.enabled $svc.autoscaling $svc.autoscaling.enabled }}
+{{- $ctx := dict "root" $ "name" $name }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "reservation-app.serviceName" $ctx }}-hpa
+  labels:
+    {{- include "reservation-app.labels" $ctx | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "reservation-app.serviceName" $ctx }}
+  minReplicas: {{ $svc.autoscaling.minReplicas | default 1 }}
+  maxReplicas: {{ $svc.autoscaling.maxReplicas | default 3 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.autoscaling.targetCPUUtilizationPercentage | default 70 }}
+{{- end }}
+{{- end }}
