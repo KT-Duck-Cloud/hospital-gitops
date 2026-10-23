@@ -227,3 +227,12 @@ dbResync:
   enabled: false
   image: mysql:8.4
   targetMasterIp: ""
+
+# 두 훅이 쓰는 DB 관리 계정 — Secret 은 사이트마다 1조 담당이 만든다 (값은 저장소에 두지 않음)
+#   kubectl -n <ns> create secret generic reservation-app-db-admin \
+#     --from-literal=DB_ROOT_PASSWORD=… --from-literal=REPL_USER=… --from-literal=REPL_PASSWORD=…
+dbAdmin:
+  secretName: reservation-app-db-admin
+  rootPasswordKey: DB_ROOT_PASSWORD
+  replUserKey: REPL_USER
+  replPasswordKey: REPL_PASSWORD
