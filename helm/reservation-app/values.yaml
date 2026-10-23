@@ -47,6 +47,11 @@ services:
     loginRateLimit: true
     metricsNodePort: 30801
     resources: {}
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
   reservation:
     enabled: true
     replicaCount: 1
@@ -59,6 +64,11 @@ services:
     medicalKey: true
     hospitalPhone: true
     resources: {}
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 70
   stats:
     enabled: true
     replicaCount: 1
@@ -70,6 +80,11 @@ services:
     metricsNodePort: 30802
     resources: {}
     checkServices: [auth, reservation]
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 2
+      targetCPUUtilizationPercentage: 70
   web:
     enabled: true
     replicaCount: 1
@@ -84,6 +99,11 @@ services:
       limits:
         cpu: 200m
         memory: 128Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
 
 # 클러스터 DNS 도메인 (web nginx 가 API Service 의 전체 이름을 만들 때 쓴다)
 clusterDomain: cluster.local
@@ -219,7 +239,7 @@ dbClusterNodes:
   # - "100.64.0.XXX" # [추가 위치] DB 인스턴스 생성 시 Tailscale 사설 IP를 추가
 
 dbPromote:
-  enabled: true
+  enabled: false
   image: mysql:8.4
 
 dbResync:
