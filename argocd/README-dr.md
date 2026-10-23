@@ -35,7 +35,7 @@ DR 판단 ─▶ DB 승격 · 복귀 (DR) ─▶ Argo: rsv-t3 · rsv-t5 · rsv-a
 | 예전 (1조 · 노션 2차 테스트) | 문제 | 지금 |
 |---|---|---|
 | `reservation-app` 하나의 `destination` 을 바꿈 (`failover-trigger.sh`, `failover-argocd.sh`) | 옮기면 예전 사이트 파드가 관리 밖에 남음 · AWS(ns hospital · AWS 값) 못 다룸 | 사이트마다 Application (`argocd/apps/rsv-*.yaml`), 대상은 고정 |
-| Sync 때 `dbPromote` 훅 (기본 켜짐) | 대상 DB 승격 + `dbClusterNodes`(t3 · t5 · **AWS**)를 읽기 전용 · 복제본으로 — AWS 가 운영 중이면 데이터를 맞추지 않고 AWS 를 멈춤. 새 버전 배포 때마다 DB 역할을 다시 바꿈 | 훅 끔, DB 는 DR |
+| Sync 때 `dbPromote` 훅 (10-23 부터 차트 기본 꺼짐) | 대상 DB 승격 + `dbClusterNodes`(t3 · t5 · **AWS**)를 읽기 전용 · 복제본으로 — AWS 가 운영 중이면 데이터를 맞추지 않고 AWS 를 멈춤. 새 버전 배포 때마다 DB 역할을 다시 바꿈 | 훅 끔, DB 는 DR |
 | `resync-argocd.sh` — 운영 앱을 복구 사이트로 옮기고 `dbResync` 훅 | 운영 앱이 복구 중 사이트로 감 · parameters 를 통째로 덮어 이미지 태그 등이 사라짐 | DR 복귀가 다시 채우기 · 전환까지 (`provision.failback_sync`). 갈라진 대기 DB 다시 채우기는 DR 이 판단해 부르는 작업으로 |
 | `curl -s … > /dev/null` | 401 · 500 이어도 성공으로 끝남 · Healthy 를 기다리지 않음 | DR 이 응답 코드 확인 · Synced · Healthy 240초 기다림 · 실패면 helm |
 | 토큰을 스크립트 · 노션에 그대로 | 노션을 보는 사람 누구나 Argo admin | ktci5 `secrets.json`(root 600)에만 (`36_argo_token.sh`). 스크립트 · 노션에서 지움 |

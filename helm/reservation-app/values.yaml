@@ -218,8 +218,9 @@ dbClusterNodes:
   - "100.64.0.82"   # aws DB
   # - "100.64.0.XXX" # [추가 위치] DB 인스턴스 생성 시 Tailscale 사설 IP를 추가
 
+# DB 승격 · 재동기화 훅 — 기본 꺼짐. 켜면 Argo 동기화(PreSync)마다 DB 를 바꾼다. 승격 · 복귀는 DR(duck-hsagent)이 한다 (argocd/README-dr.md)
 dbPromote:
-  enabled: true
+  enabled: false
   image: mysql:8.4
 
 dbResync:
