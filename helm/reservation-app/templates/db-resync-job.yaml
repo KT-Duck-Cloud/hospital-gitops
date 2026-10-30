@@ -30,7 +30,7 @@ spec:
             - |
               set -e
               
-              ROOT_PASS="$DB_ROOT_PASSWORD"
+              printf '[client]\nuser=root\npassword=%s\n' "$DB_ROOT_PASSWORD" > /tmp/root.cnf && chmod 600 /tmp/root.cnf
               TARGET_MASTER="{{ .Values.dbResync.targetMasterIp | default "" }}"
               
               # 1. 대상 마스터 IP 결정 (지정값이 없으면 후보 노드 자동 탐색)
@@ -45,7 +45,7 @@ spec:
                   fi
                   
                   # 대상 노드의 read_only 상태 확인 (0이면 Master)
-                  IS_RO=$(mysql -h "$IP" -u root -p"$ROOT_PASS" --connect-timeout=3 -se "SELECT @@read_only;" 2>/dev/null || echo "DOWN")
+                  IS_RO=$(mysql --defaults-extra-file=/tmp/root.cnf -h "$IP" --connect-timeout=3 -se "SELECT @@read_only;" 2>/dev/null || echo "DOWN")
                   if [ "$IS_RO" = "0" ]; then
                     TARGET_MASTER="$IP"
                     echo "Detected active master: $TARGET_MASTER"
@@ -62,7 +62,7 @@ spec:
               echo "Starting resync to master: $TARGET_MASTER"
               
               # 2. 로컬 DB 복제 중단 및 읽기 전용 모드 전환 (Split-Brain 방지)
-              mysql -h db-service -u root -p"$ROOT_PASS" <<EOF
+              mysql --defaults-extra-file=/tmp/root.cnf -h db-service <<EOF
               STOP REPLICA;
               SET GLOBAL read_only = ON;
               SET GLOBAL super_read_only = ON;
@@ -70,8 +70,8 @@ spec:
               CHANGE REPLICATION SOURCE TO
                 SOURCE_HOST='${TARGET_MASTER}',
                 SOURCE_PORT=3306,
-                SOURCE_USER='repl_user',
-                SOURCE_PASSWORD='duckpass',
+                SOURCE_USER='${REPL_USER}',
+                SOURCE_PASSWORD='${REPL_PASSWORD}',
                 SOURCE_AUTO_POSITION=1,
                 GET_SOURCE_PUBLIC_KEY=1;
               
@@ -81,7 +81,7 @@ spec:
               sleep 2
               
               # 3. 복제 상태 검증
-              STATUS=$(mysql -h db-service -u root -p"$ROOT_PASS" -e "SHOW REPLICA STATUS\G")
+              STATUS=$(mysql --defaults-extra-file=/tmp/root.cnf -h db-service -e "SHOW REPLICA STATUS\G")
               IO_RUNNING=$(echo "$STATUS" | grep "Replica_IO_Running:" | awk '{print $2}')
               SQL_RUNNING=$(echo "$STATUS" | grep "Replica_SQL_Running:" | awk '{print $2}')
               
@@ -97,7 +97,17 @@ spec:
             - name: DB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: reservation-app-db-runtime
-                  key: DB_PASSWORD
+                  name: {{ .Values.dbAdmin.secretName }}
+                  key: {{ .Values.dbAdmin.rootPasswordKey }}
+            - name: REPL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.dbAdmin.secretName }}
+                  key: {{ .Values.dbAdmin.replUserKey }}
+            - name: REPL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.dbAdmin.secretName }}
+                  key: {{ .Values.dbAdmin.replPasswordKey }}
       volumes: []
 {{- end }}
