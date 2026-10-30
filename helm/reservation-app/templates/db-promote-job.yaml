@@ -35,6 +35,8 @@ spec:
               printf '[client]\nuser=root\npassword=%s\n' "$DB_ROOT_PASSWORD" > /tmp/root.cnf && chmod 600 /tmp/root.cnf
               M="mysql --defaults-extra-file=/tmp/root.cnf -h db-service"
               $M -e "STOP REPLICA;" 2>/dev/null || true
+              # 옛 원본 연결 정보 삭제 — DB 재시작 때 옛 원본을 다시 따라가 데이터가 덮이지 않게
+              $M -e "RESET REPLICA ALL;" 2>/dev/null || true
               $M -e "SET GLOBAL super_read_only = OFF; SET GLOBAL read_only = OFF;"
               READ_ONLY_STATUS=$($M -se "SELECT @@read_only;")
               if [ "$READ_ONLY_STATUS" = "0" ]; then
