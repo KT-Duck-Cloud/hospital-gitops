@@ -8,7 +8,7 @@
 argocd/
   apps/rsv-t3.yaml · rsv-t5.yaml · rsv-aws.yaml   사이트별 Application (값 readOnlyMode · replicaCount 로 active · warm · off)
   README-dr.md                                    DR 과 Argo 의 역할 나눔
-  application.yaml · failover-trigger.sh          예전 방식 — 사용 중지
+  application.yaml                               예전 방식 — 사용 중지
 helm/reservation-app/   마이크로서비스 차트 (auth · reservation · stats · web)
   values.yaml           공통 값 (온프레미스 기준)
   values-aws.yaml       AWS(t8) 덮어쓰기 — 읽기 전용 · 0개

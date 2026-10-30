@@ -40,7 +40,7 @@ DR 판단 ─▶ DB 승격 · 복귀 (DR) ─▶ Argo: rsv-t3 · rsv-t5 · rsv-a
 | `curl -s … > /dev/null` | 401 · 500 이어도 성공으로 끝남 · Healthy 를 기다리지 않음 | DR 이 응답 코드 확인 · Synced · Healthy 240초 기다림 · 실패면 helm |
 | 토큰을 스크립트 · 노션에 그대로 | 노션을 보는 사람 누구나 Argo admin | ktci5 `secrets.json`(root 600)에만 (`36_argo_token.sh`). 스크립트 · 노션에서 지움 |
 
-`argocd/application.yaml` · `argocd/failover-trigger.sh` 는 사용 중지 (아래 3번에서 `reservation-app` 삭제). 노션의 `failover-argocd.sh` · `resync-argocd.sh` 도 쓰지 않는다
+`argocd/application.yaml` 은 사용 중지 (`failover-trigger.sh` 는 삭제됨) (아래 3번에서 `reservation-app` 삭제). 노션의 `failover-argocd.sh` · `resync-argocd.sh` 도 쓰지 않는다
 
 ## IaC 담당이 할 일 (Argo CD, t4-vm2)
 
